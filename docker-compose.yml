@@ -1,0 +1,99 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: linuxer
+      POSTGRES_PASSWORD: 12345678
+      POSTGRES_DB: vibe
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U linuxer -d vibe"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    volumes:
+      - valkeydata:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "6379:6379"
+
+  storage-server:
+    image: ghcr.io/linuxer41/vibe-storage-server:latest
+    build:
+      context: storage-server
+    restart: unless-stopped
+    volumes:
+      - media:/app/media
+      - cache:/app/cache
+    ports:
+      - "3002:3002"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    image: ghcr.io/linuxer41/vibe-backend:latest
+    build:
+      context: backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://linuxer:12345678@postgres:5432/vibe
+      VALKEY_URL: redis://valkey:6379
+      PORT: "3000"
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+
+  backend-rust:
+    image: ghcr.io/linuxer41/vibe-backend-rust:latest
+    build:
+      context: backend-rust
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://linuxer:12345678@postgres:5432/vibe
+      VALKEY_URL: redis://valkey:6379
+      PORT: "3001"
+      RUST_LOG: info
+    ports:
+      - "3001:3001"
+
+  frontend:
+    image: ghcr.io/linuxer41/vibe-frontend:latest
+    build:
+      context: frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  pgdata:
+  valkeydata:
+  media:
+  cache:
