@@ -15,6 +15,9 @@
   let showCountrySheet = $state(false);
   let countrySearch = $state('');
   let setupAvatarPreview = $state<string | null>(null);
+  let sendingCode = $state(false);
+  let verifyingCode = $state(false);
+  let savingSetup = $state(false);
 
   function handleAvatarSelect(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -39,10 +42,13 @@
   function sendCode() {
     const ph = get(phone);
     if (ph.length < 10) { authError.set('Teléfono inválido'); return; }
+    if (sendingCode) return;
     authError.set('');
+    sendingCode = true;
     const s = createSocket();
     s.connect();
     s.emit('send_code', { phone: `${selectedCountry.dial}${ph}` }, (res: any) => {
+      sendingCode = false;
       if (res.ok) {
         authStep.set('verify');
         sk = s;
@@ -67,7 +73,9 @@
     const cd = get(code);
     const ph = get(phone);
     if (cd.length < 6) { authError.set('Código inválido'); return; }
+    if (verifyingCode) return;
     authError.set('');
+    verifyingCode = true;
     const s = sk || get(socket);
     s?.emit('verify_code', {
       phone: `${selectedCountry.dial}${ph}`, code: cd,
@@ -75,6 +83,7 @@
       displayName: `User ${ph.slice(-4)}`,
       countryCode: selectedCountry.dial
     }, (res: any) => {
+      verifyingCode = false;
       if (res.ok) {
         token.set(res.token);
         user.set(res.user);
@@ -113,6 +122,8 @@
     const su = get(setupUser);
     const sb = get(setupBio);
     if (!nm.trim()) return;
+    if (savingSetup) return;
+    savingSetup = true;
     let s = get(socket);
     if (!s || !s.connected) { s = createSocket(get(token)); s.connect(); socket.set(s); }
     const usr = get(user);
@@ -121,12 +132,13 @@
     if (su !== usr?.username) fields.username = su;
     if (sb !== (usr?.bio || '')) fields.bio = sb;
     if (setupAvatarPreview) fields.avatar = setupAvatarPreview;
+    const done = () => { savingSetup = false; enterMain(); };
     if (Object.keys(fields).length > 0) {
       s.emit('update_profile', fields, () => {
         if (usr) { usr.display_name = nm; usr.username = su; usr.bio = sb; if (setupAvatarPreview) usr.avatar = setupAvatarPreview; user.set(usr); }
-        enterMain();
+        done();
       });
-    } else { enterMain(); }
+    } else { done(); }
   }
 </script>
 
@@ -161,9 +173,13 @@
           </button>
           <input type="tel" bind:value={$phone} placeholder="54 11 1234 5678" onkeydown={(e) => e.key === 'Enter' && sendCode()} />
         </div>
-        <button class="init-btn" onclick={sendCode}>
-          Continuar
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <button class="init-btn" onclick={sendCode} disabled={sendingCode}>
+          {#if sendingCode}
+            <span class="init-spinner"></span>
+          {:else}
+            Continuar
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          {/if}
         </button>
       </div>
 
@@ -173,9 +189,13 @@
         <div class="code-input-wrap">
           <input type="text" bind:value={$code} placeholder="Código de 6 dígitos" maxlength="6" class="code-input" onkeydown={(e) => e.key === 'Enter' && verifyCode()} />
         </div>
-        <button class="init-btn" onclick={verifyCode}>
-          Verificar
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <button class="init-btn" onclick={verifyCode} disabled={verifyingCode}>
+          {#if verifyingCode}
+            <span class="init-spinner"></span>
+          {:else}
+            Verificar
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          {/if}
         </button>
         <button class="init-link" onclick={() => authStep.set('phone')}>Cambiar número</button>
       </div>
@@ -201,9 +221,13 @@
           <span class="su-value">{$setupUser}</span>
         </div>
         <textarea bind:value={$setupBio} placeholder="Opcional" rows={2} maxlength="100" class="init-input"></textarea>
-        <button class="init-btn" onclick={saveSetup}>
-          Finalizar
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <button class="init-btn" onclick={saveSetup} disabled={savingSetup}>
+          {#if savingSetup}
+            <span class="init-spinner"></span>
+          {:else}
+            Finalizar
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          {/if}
         </button>
       </div>
     {/if}
@@ -323,9 +347,18 @@
     gap: 8px; padding: 15px; background: var(--accent); color: #000;
     border: none; border-radius: 12px; font-size: 16px; font-weight: 700;
     cursor: pointer; transition: background 0.2s, transform 0.15s;
+    min-height: 52px;
   }
   .init-btn:hover { background: var(--accent-hover); }
   .init-btn:active { transform: scale(0.98); }
+  .init-btn:disabled { opacity: 0.6; cursor: default; }
+  .init-btn:disabled:active { transform: none; }
+  .init-spinner {
+    width: 22px; height: 22px; border: 3px solid rgba(0,0,0,0.2);
+    border-top-color: #000; border-radius: 50%;
+    animation: init-spin 0.7s linear infinite;
+  }
+  @keyframes init-spin { to { transform: rotate(360deg); } }
   .init-link {
     width: 100%; background: none; border: none;
     color: var(--accent); font-size: 14px; font-weight: 600;
