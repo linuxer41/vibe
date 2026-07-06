@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+RUN npx svelte-kit sync && npm run build
 
 FROM nginx:1.27-alpine
 COPY --from=builder /app/build /usr/share/nginx/html
