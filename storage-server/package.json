@@ -1,0 +1,19 @@
+{
+  "name": "storage-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@img/sharp-wasm32": "^0.35.3",
+    "express": "^5.2.1",
+    "jimp": "^0.22.12",
+    "sharp": "^0.35.3"
+  }
+}

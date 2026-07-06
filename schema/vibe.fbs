@@ -1,0 +1,145 @@
+namespace vibe;
+
+table User {
+  id: int;
+  phone: string;
+  username: string;
+  display_name: string;
+  avatar: string;
+  bio: string;
+  country_code: string;
+  online: bool = false;
+}
+
+table Message {
+  id: int;
+  chat_id: int;
+  sender_id: int;
+  sender_name: string;
+  sender_avatar: string;
+  text: string;
+  msg_type: string;
+  created_at: string;
+}
+
+table Chat {
+  id: int;
+  chat_type: string;
+  name: string;
+  avatar: string;
+  last_message: string;
+  last_message_time: string;
+  last_sender_id: int;
+  created_at: string;
+  unread: int;
+  pinned: bool = false;
+}
+
+table Post {
+  id: int;
+  user_id: int;
+  text: string;
+  media: string;
+  media_type: string;
+  likes_count: int;
+  comments_count: int;
+  created_at: string;
+  expires_at: string;
+  display_name: string;
+  avatar: string;
+  views: long;
+}
+
+table Video {
+  id: int;
+  user_id: int;
+  video_url: string;
+  thumbnail: string;
+  caption: string;
+  likes_count: int;
+  comments_count: int;
+  created_at: string;
+  display_name: string;
+  avatar: string;
+  username: string;
+}
+
+table Live {
+  id: int;
+  user_id: int;
+  title: string;
+  status: string;
+  started_at: string;
+  ended_at: string;
+  display_name: string;
+  avatar: string;
+  username: string;
+}
+
+table Call {
+  id: int;
+  caller_id: int;
+  callee_id: int;
+  call_type: string;
+  status: string;
+  duration: int;
+  created_at: string;
+  direction: string;
+  other_id: int;
+  other_name: string;
+  other_avatar: string;
+}
+
+table Session {
+  id: int;
+  device_name: string;
+  device_id: string;
+  created_at: string;
+  last_active: string;
+}
+
+table Contact {
+  user_id: int;
+  phone: string;
+  username: string;
+  display_name: string;
+  avatar: string;
+  online: bool = false;
+}
+
+table PostComment {
+  id: int;
+  post_id: int;
+  user_id: int;
+  text: string;
+  created_at: string;
+  display_name: string;
+  avatar: string;
+  username: string;
+}
+
+table VideoComment {
+  id: int;
+  video_id: int;
+  user_id: int;
+  text: string;
+  created_at: string;
+  display_name: string;
+  avatar: string;
+  username: string;
+}
+
+// Generic payload wrapper for socket events
+table SocketPayload {
+  event: string;
+  data: [ubyte];
+}
+
+// Valkey pub/sub envelope
+table ValkeyEnvelope {
+  channel: string;
+  format: string;
+  target: string;
+  event: string;
+  data: [ubyte];
+}

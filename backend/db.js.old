@@ -1,0 +1,926 @@
+const initSqlJs = require('sql.js');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const DB_PATH = path.join(__dirname, 'chat.db');
+let db = null;
+
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+async function init() {
+  const SQL = await initSqlJs();
+  if (fs.existsSync(DB_PATH)) {
+    const buffer = fs.readFileSync(DB_PATH);
+    db = new SQL.Database(buffer);
+  } else {
+    db = new SQL.Database();
+  }
+
+  db.run(`CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT UNIQUE NOT NULL,
+    username TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL,
+    avatar TEXT DEFAULT '',
+    bio TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+  try { db.run('ALTER TABLE users ADD COLUMN delete_at DATETIME DEFAULT NULL'); } catch {}
+  try { db.run('ALTER TABLE users ADD COLUMN auto_delete_days INTEGER DEFAULT 0'); } catch {}
+  try { db.run('ALTER TABLE users ADD COLUMN country_code TEXT DEFAULT ""'); } catch {}
+
+  db.run(`CREATE TABLE IF NOT EXISTS verification_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phone TEXT NOT NULL,
+    code TEXT NOT NULL,
+    expires_at DATETIME NOT NULL,
+    used INTEGER DEFAULT 0
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    device_id TEXT DEFAULT '',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    contact_user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, contact_user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (contact_user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS chats (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL CHECK(type IN ('private','group')),
+    name TEXT DEFAULT '',
+    avatar TEXT DEFAULT '',
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS chat_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(chat_id, user_id),
+    FOREIGN KEY (chat_id) REFERENCES chats(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chat_id INTEGER NOT NULL,
+    sender_id INTEGER NOT NULL,
+    text TEXT DEFAULT '',
+    type TEXT DEFAULT 'text' CHECK(type IN ('text','image','system')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (chat_id) REFERENCES chats(id),
+    FOREIGN KEY (sender_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS message_reads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    read_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(message_id, user_id),
+    FOREIGN KEY (message_id) REFERENCES messages(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    text TEXT DEFAULT '',
+    media TEXT DEFAULT '',
+    media_type TEXT DEFAULT 'text',
+    likes_count INTEGER DEFAULT 0,
+    comments_count INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    expires_at DATETIME NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+  try { db.run("ALTER TABLE posts ADD COLUMN media_type TEXT DEFAULT 'text'"); } catch {}
+  try { db.run("ALTER TABLE posts ADD COLUMN likes_count INTEGER DEFAULT 0"); } catch {}
+  try { db.run("ALTER TABLE posts ADD COLUMN comments_count INTEGER DEFAULT 0"); } catch {}
+
+  db.run(`CREATE TABLE IF NOT EXISTS post_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    viewed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(post_id, user_id),
+    FOREIGN KEY (post_id) REFERENCES posts(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS post_likes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(post_id, user_id),
+    FOREIGN KEY (post_id) REFERENCES posts(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS post_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES posts(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  // Migration from old tables
+  try { db.run('ALTER TABLE status RENAME TO posts'); } catch {}
+  try { db.run('ALTER TABLE post_views RENAME TO post_views'); } catch {}
+  try { db.run('ALTER TABLE post_likes RENAME TO post_likes'); } catch {}
+  try { db.run('ALTER TABLE post_comments RENAME TO post_comments'); } catch {}
+
+  db.run(`CREATE TABLE IF NOT EXISTS calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    caller_id INTEGER NOT NULL,
+    callee_id INTEGER NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('audio','video')),
+    status TEXT NOT NULL CHECK(status IN ('missed','completed','incoming','outgoing')),
+    duration INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (caller_id) REFERENCES users(id),
+    FOREIGN KEY (callee_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS two_step_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    hint TEXT DEFAULT '',
+    enabled INTEGER DEFAULT 1,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS blocked_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    blocked_user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, blocked_user_id),
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (blocked_user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS privacy_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER UNIQUE NOT NULL,
+    last_seen TEXT DEFAULT 'everyone' CHECK(last_seen IN ('everyone','contacts','nobody')),
+    profile_photo TEXT DEFAULT 'everyone' CHECK(profile_photo IN ('everyone','contacts','nobody')),
+    bio TEXT DEFAULT 'everyone' CHECK(bio IN ('everyone','contacts','nobody')),
+    status TEXT DEFAULT 'contacts' CHECK(status IN ('everyone','contacts','nobody')),
+    calls TEXT DEFAULT 'everyone' CHECK(calls IN ('everyone','contacts','nobody')),
+    read_receipts INTEGER DEFAULT 1,
+    message_history INTEGER DEFAULT 1,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS videos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    video_url TEXT NOT NULL,
+    thumbnail TEXT DEFAULT '',
+    caption TEXT DEFAULT '',
+    likes_count INTEGER DEFAULT 0,
+    comments_count INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS video_likes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(video_id, user_id),
+    FOREIGN KEY (video_id) REFERENCES videos(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS video_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    video_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (video_id) REFERENCES videos(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS lives (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    title TEXT DEFAULT '',
+    status TEXT DEFAULT 'live' CHECK(status IN ('live','ended')),
+    started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ended_at DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  // Add device_name and last_active to sessions if missing
+  try { db.run('ALTER TABLE sessions ADD COLUMN device_name TEXT DEFAULT ""'); } catch {}
+  try { db.run('ALTER TABLE sessions ADD COLUMN last_active DATETIME DEFAULT CURRENT_TIMESTAMP'); } catch {}
+
+  save();
+  return db;
+}
+
+function save() {
+  const data = db.export();
+  fs.writeFileSync(DB_PATH, Buffer.from(data));
+}
+
+function prepare(sql) {
+  return db.prepare(sql);
+}
+
+// --- AUTH ---
+
+function sendCode(phone) {
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  const expires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  db.run('INSERT INTO verification_codes (phone, code, expires_at) VALUES (?, ?, ?)', [phone, code, expires]);
+  save();
+  return code;
+}
+
+function verifyCode(phone, code) {
+  const stmt = prepare('SELECT id, expires_at FROM verification_codes WHERE phone = ? AND code = ? AND used = 0 ORDER BY id DESC LIMIT 1');
+  stmt.bind([phone, code]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    if (new Date(row.expires_at) > new Date()) {
+      db.run('UPDATE verification_codes SET used = 1 WHERE id = ?', [row.id]);
+      save();
+      return true;
+    }
+  }
+  stmt.free();
+  return false;
+}
+
+function findOrCreateUser(phone, username, displayName, countryCode = '') {
+  const stmt = prepare('SELECT id, username, display_name, avatar, bio, country_code FROM users WHERE phone = ?');
+  stmt.bind([phone]);
+  if (stmt.step()) {
+    const user = stmt.getAsObject();
+    stmt.free();
+    return { user, isNew: false };
+  }
+  stmt.free();
+  db.run('INSERT INTO users (phone, username, display_name, country_code) VALUES (?, ?, ?, ?)', [phone, username, displayName, countryCode]);
+  save();
+  const stmt2 = prepare('SELECT id, username, display_name, avatar, bio, country_code FROM users WHERE phone = ?');
+  stmt2.bind([phone]);
+  stmt2.step();
+  const user = stmt2.getAsObject();
+  stmt2.free();
+  return { user, isNew: true };
+}
+
+function createSession(userId, deviceId = '', deviceName = '') {
+  const token = generateToken();
+  db.run('INSERT INTO sessions (user_id, token, device_id, device_name) VALUES (?, ?, ?, ?)', [userId, token, deviceId, deviceName]);
+  save();
+  return token;
+}
+
+function getSession(token) {
+  const stmt = prepare(`SELECT u.id, u.phone, u.username, u.display_name, u.avatar, u.bio, u.country_code
+    FROM sessions p JOIN users u ON p.user_id = u.id WHERE p.token = ?`);
+  stmt.bind([token]);
+  if (stmt.step()) {
+    const user = stmt.getAsObject();
+    stmt.free();
+    return user;
+  }
+  stmt.free();
+  return null;
+}
+
+// --- USERS / CONTACTS ---
+
+function getUserById(id) {
+  const stmt = prepare('SELECT id, phone, username, display_name, avatar, bio, country_code FROM users WHERE id = ?');
+  stmt.bind([id]);
+  if (stmt.step()) {
+    const user = stmt.getAsObject();
+    stmt.free();
+    return user;
+  }
+  stmt.free();
+  return null;
+}
+
+function searchUsers(query) {
+  const like = `%${query}%`;
+  const stmt = prepare('SELECT id, phone, username, display_name, avatar FROM users WHERE phone LIKE ? OR username LIKE ? OR display_name LIKE ? LIMIT 20');
+  stmt.bind([like, like, like]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function addContact(userId, contactUserId) {
+  try {
+    db.run('INSERT OR IGNORE INTO contacts (user_id, contact_user_id) VALUES (?, ?)', [userId, contactUserId]);
+    db.run('INSERT OR IGNORE INTO contacts (user_id, contact_user_id) VALUES (?, ?)', [contactUserId, userId]);
+    save();
+    return true;
+  } catch { return false; }
+}
+
+function getContacts(userId) {
+  const stmt = prepare(`SELECT u.id, u.phone, u.username, u.display_name, u.avatar, u.bio
+    FROM contacts c JOIN users u ON c.contact_user_id = u.id WHERE c.user_id = ? ORDER BY u.display_name`);
+  stmt.bind([userId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+// --- CHATS ---
+
+function createPrivateChat(user1Id, user2Id) {
+  const existing = getPrivateChat(user1Id, user2Id);
+  if (existing) return existing;
+  db.run('INSERT INTO chats (type, name, created_by) VALUES (?, ?, ?)', ['private', '', user1Id]);
+  const chatId = getLastInsertId();
+  save();
+  db.run('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)', [chatId, user1Id]);
+  db.run('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)', [chatId, user2Id]);
+  save();
+  return chatId;
+}
+
+function getPrivateChat(user1Id, user2Id) {
+  const stmt = prepare(`SELECT c.id FROM chats c
+    WHERE c.type = 'private'
+    AND (SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id) = 2
+    AND (SELECT COUNT(*) FROM chat_members WHERE chat_id = c.id AND user_id IN (?, ?)) = 2`);
+  stmt.bind([user1Id, user2Id]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row.id;
+  }
+  stmt.free();
+  return null;
+}
+
+function createGroup(name, createdBy, memberIds) {
+  db.run('INSERT INTO chats (type, name, created_by) VALUES (?, ?, ?)', ['group', name, createdBy]);
+  const chatId = getLastInsertId();
+  save();
+  const allMembers = [...new Set([createdBy, ...memberIds])];
+  allMembers.forEach((uid) => {
+    try { db.run('INSERT INTO chat_members (chat_id, user_id) VALUES (?, ?)', [chatId, uid]); } catch {}
+  });
+  save();
+  return chatId;
+}
+
+function getUserChats(userId) {
+  const stmt = prepare(`SELECT c.id, c.type, c.name, c.avatar, c.created_at,
+    (SELECT text FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1) as last_message,
+    (SELECT created_at FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1) as last_message_time,
+    (SELECT sender_id FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1) as last_sender_id
+    FROM chats c JOIN chat_members cm ON c.id = cm.chat_id WHERE cm.user_id = ?
+    ORDER BY last_message_time DESC`);
+  stmt.bind([userId]);
+  const rows = [];
+  while (stmt.step()) {
+    const chat = stmt.getAsObject();
+    // Get unread count
+    const unreadStmt = prepare(`SELECT COUNT(*) as cnt FROM messages m
+      WHERE m.chat_id = ? AND m.id > COALESCE(
+        (SELECT MAX(mr.message_id) FROM message_reads mr WHERE mr.user_id = ? AND mr.message_id IN (SELECT id FROM messages WHERE chat_id = ?)), 0
+      ) AND m.sender_id != ?`);
+    unreadStmt.bind([chat.id, userId, chat.id, userId]);
+    unreadStmt.step();
+    chat.unread = unreadStmt.getAsObject().cnt;
+    unreadStmt.free();
+    if (chat.type === 'private') {
+      const memberStmt = prepare('SELECT u.id, u.display_name, u.avatar FROM chat_members cm JOIN users u ON cm.user_id = u.id WHERE cm.chat_id = ? AND cm.user_id != ?');
+      memberStmt.bind([chat.id, userId]);
+      if (memberStmt.step()) {
+        const other = memberStmt.getAsObject();
+        chat.name = chat.name || other.display_name;
+        chat.avatar = chat.avatar || other.avatar;
+      }
+      memberStmt.free();
+    }
+    rows.push(chat);
+  }
+  stmt.free();
+  return rows;
+}
+
+function getChatMembers(chatId) {
+  const stmt = prepare('SELECT u.id, u.phone, u.username, u.display_name, u.avatar FROM chat_members cm JOIN users u ON cm.user_id = u.id WHERE cm.chat_id = ?');
+  stmt.bind([chatId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function addChatMember(chatId, userId) {
+  try {
+    db.run('INSERT OR IGNORE INTO chat_members (chat_id, user_id) VALUES (?, ?)', [chatId, userId]);
+    save();
+    return true;
+  } catch { return false; }
+}
+
+// --- MESSAGES ---
+
+function addMessage(chatId, senderId, text, type = 'text') {
+  db.run('INSERT INTO messages (chat_id, sender_id, text, type) VALUES (?, ?, ?, ?)', [chatId, senderId, text, type]);
+  const id = getLastInsertId();
+  save();
+  return id;
+}
+
+function getMessages(chatId, limit = 50, beforeId = null) {
+  let sql = `SELECT m.*, u.display_name as sender_name, u.avatar as sender_avatar
+    FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.chat_id = ?`;
+  const params = [chatId];
+  if (beforeId) {
+    sql += ' AND m.id < ?';
+    params.push(beforeId);
+  }
+  sql += ' ORDER BY m.id DESC LIMIT ?';
+  params.push(limit);
+  const stmt = prepare(sql);
+  stmt.bind(params);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows.reverse();
+}
+
+function markRead(messageId, userId) {
+  try {
+    db.run('INSERT OR IGNORE INTO message_reads (message_id, user_id) VALUES (?, ?)', [messageId, userId]);
+    save();
+  } catch {}
+}
+
+function getLastInsertId() {
+  const result = db.exec('SELECT last_insert_rowid()');
+  if (result && result[0] && result[0].values && result[0].values[0]) {
+    const id = result[0].values[0][0];
+    return id;
+  }
+  return 0;
+}
+
+// --- CALLS ---
+
+function addCall(callerId, calleeId, type, status, duration = 0) {
+  db.run('INSERT INTO calls (caller_id, callee_id, type, status, duration) VALUES (?, ?, ?, ?, ?)', [callerId, calleeId, type, status, duration]);
+  const id = getLastInsertId();
+  save();
+  return id;
+}
+
+function getUserCalls(userId, limit = 30) {
+  const stmt = prepare(`SELECT c.*, 
+    CASE WHEN c.caller_id = ? THEN 'outgoing' WHEN c.callee_id = ? THEN 'incoming' ELSE c.status END as direction,
+    u.id as other_id, u.display_name as other_name, u.avatar as other_avatar
+    FROM calls c JOIN users u ON (CASE WHEN c.caller_id = ? THEN c.callee_id ELSE c.caller_id END) = u.id
+    WHERE c.caller_id = ? OR c.callee_id = ?
+    ORDER BY c.id DESC LIMIT ?`);
+  stmt.bind([userId, userId, userId, userId, userId, limit]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+// --- STATUS ---
+
+function createPost(userId, text, media = '', mediaType = 'text') {
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  db.run('INSERT INTO posts (user_id, text, media, media_type, expires_at) VALUES (?, ?, ?, ?, ?)', [userId, text, media, mediaType, expires]);
+  const id = getLastInsertId();
+  save();
+  return { id, text, media, media_type: mediaType, created_at: new Date().toISOString(), likes_count: 0, comments_count: 0 };
+}
+
+function getPosts(userId, filter = 'all') {
+  let sql;
+  if (filter === 'contacts') {
+    sql = `SELECT p.*, u.display_name, u.avatar,
+      (SELECT COUNT(*) FROM post_views WHERE post_id = p.id) as views
+      FROM posts p JOIN users u ON p.user_id = u.id
+      WHERE (p.user_id = ? OR p.user_id IN (SELECT contact_user_id FROM contacts WHERE user_id = ?))
+      AND p.expires_at > datetime('now')
+      ORDER BY p.created_at DESC`;
+  } else {
+    sql = `SELECT p.*, u.display_name, u.avatar,
+      (SELECT COUNT(*) FROM post_views WHERE post_id = p.id) as views
+      FROM posts p JOIN users u ON p.user_id = u.id
+      WHERE p.expires_at > datetime('now')
+      ORDER BY p.created_at DESC`;
+  }
+  const stmt = prepare(sql);
+  if (filter === 'contacts') { stmt.bind([userId, userId]); }
+  else { stmt.bind([]); }
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function viewPost(statusId, userId) {
+  try {
+    db.run('INSERT OR IGNORE INTO post_views (post_id, user_id) VALUES (?, ?)', [statusId, userId]);
+    save();
+  } catch {}
+}
+
+function getPostViews(statusId) {
+  const stmt = prepare('SELECT u.id, u.display_name, u.avatar, sv.viewed_at FROM post_views sv JOIN users u ON sv.user_id = u.id WHERE sv.post_id = ?');
+  stmt.bind([statusId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+// --- POST LIKES & COMMENTS ---
+
+function likePost(statusId, userId) {
+  try {
+    db.run('INSERT OR IGNORE INTO post_likes (post_id, user_id) VALUES (?, ?)', [statusId, userId]);
+    db.run('UPDATE posts SET likes_count = (SELECT COUNT(*) FROM post_likes WHERE post_id = ?) WHERE id = ?', [statusId, statusId]);
+    save();
+    return true;
+  } catch { return false; }
+}
+
+function unlikePost(statusId, userId) {
+  try {
+    db.run('DELETE FROM post_likes WHERE post_id = ? AND user_id = ?', [statusId, userId]);
+    db.run('UPDATE posts SET likes_count = (SELECT COUNT(*) FROM post_likes WHERE post_id = ?) WHERE id = ?', [statusId, statusId]);
+    save();
+    return true;
+  } catch { return false; }
+}
+
+function hasUserLikedPost(statusId, userId) {
+  const stmt = prepare('SELECT id FROM post_likes WHERE post_id = ? AND user_id = ?');
+  stmt.bind([statusId, userId]);
+  const ok = stmt.step();
+  stmt.free();
+  return ok;
+}
+
+function addPostComment(statusId, userId, text) {
+  db.run('INSERT INTO post_comments (post_id, user_id, text) VALUES (?, ?, ?)', [statusId, userId, text]);
+  db.run('UPDATE posts SET comments_count = (SELECT COUNT(*) FROM post_comments WHERE post_id = ?) WHERE id = ?', [statusId, statusId]);
+  save();
+  const id = getLastInsertId();
+  return { id, post_id: statusId, user_id: userId, text, created_at: new Date().toISOString() };
+}
+
+function getPostComments(statusId) {
+  const stmt = prepare(`SELECT sc.*, u.display_name, u.avatar, u.username
+    FROM post_comments sc JOIN users u ON sc.user_id = u.id WHERE sc.post_id = ? ORDER BY sc.created_at DESC`);
+  stmt.bind([statusId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+// --- ONLINE USERS (in-memory) ---
+const onlineUsers = new Set();
+
+function setOnline(userId) { onlineUsers.add(userId); }
+function setOffline(userId) { onlineUsers.delete(userId); }
+function isOnline(userId) { return onlineUsers.has(userId); }
+function getOnlineUsers() { return [...onlineUsers]; }
+
+// --- PROFILE ---
+
+function updateProfile(userId, fields) {
+  const sets = [];
+  const params = [];
+  if (fields.display_name !== undefined) { sets.push('display_name = ?'); params.push(fields.display_name); }
+  if (fields.username !== undefined) { sets.push('username = ?'); params.push(fields.username); }
+  if (fields.avatar !== undefined) { sets.push('avatar = ?'); params.push(fields.avatar); }
+  if (fields.bio !== undefined) { sets.push('bio = ?'); params.push(fields.bio); }
+  if (sets.length === 0) return;
+  params.push(userId);
+  db.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, params);
+  save();
+}
+
+// --- TWO-STEP VERIFICATION ---
+
+function setTwoStepPassword(userId, password, hint = '') {
+  const hash = crypto.createHash('sha256').update(password).digest('hex');
+  db.run(`INSERT INTO two_step_settings (user_id, password_hash, hint, enabled)
+    VALUES (?, ?, ?, 1) ON CONFLICT(user_id) DO UPDATE SET password_hash = ?, hint = ?, enabled = 1`,
+    [userId, hash, hint, hash, hint]);
+  save();
+}
+
+function verifyTwoStepPassword(userId, password) {
+  const stmt = prepare('SELECT password_hash, enabled FROM two_step_settings WHERE user_id = ?');
+  stmt.bind([userId]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    if (!row.enabled) return true;
+    const hash = crypto.createHash('sha256').update(password).digest('hex');
+    return hash === row.password_hash;
+  }
+  stmt.free();
+  return true;
+}
+
+function disableTwoStep(userId) {
+  db.run('UPDATE two_step_settings SET enabled = 0 WHERE user_id = ?', [userId]);
+  save();
+}
+
+function getTwoStepStatus(userId) {
+  const stmt = prepare('SELECT enabled, hint FROM two_step_settings WHERE user_id = ?');
+  stmt.bind([userId]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row;
+  }
+  stmt.free();
+  return { enabled: 0, hint: '' };
+}
+
+// --- BLOCKED USERS ---
+
+function blockUser(userId, blockedUserId) {
+  try {
+    db.run('INSERT OR IGNORE INTO blocked_users (user_id, blocked_user_id) VALUES (?, ?)', [userId, blockedUserId]);
+    save();
+    return true;
+  } catch { return false; }
+}
+
+function unblockUser(userId, blockedUserId) {
+  db.run('DELETE FROM blocked_users WHERE user_id = ? AND blocked_user_id = ?', [userId, blockedUserId]);
+  save();
+}
+
+function getBlockedUsers(userId) {
+  const stmt = prepare(`SELECT u.id, u.phone, u.username, u.display_name, u.avatar, u.bio
+    FROM blocked_users b JOIN users u ON b.blocked_user_id = u.id WHERE b.user_id = ?`);
+  stmt.bind([userId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function isBlocked(userId, targetUserId) {
+  const stmt = prepare('SELECT id FROM blocked_users WHERE user_id = ? AND blocked_user_id = ?');
+  stmt.bind([userId, targetUserId]);
+  if (stmt.step()) { stmt.free(); return true; }
+  stmt.free();
+
+  const stmt2 = prepare('SELECT id FROM blocked_users WHERE user_id = ? AND blocked_user_id = ?');
+  stmt2.bind([targetUserId, userId]);
+  if (stmt2.step()) { stmt2.free(); return true; }
+  stmt2.free();
+  return false;
+}
+
+// --- SESSIONS MANAGEMENT ---
+
+function getUserSessions(userId) {
+  const stmt = prepare('SELECT id, device_name, device_id, created_at, last_active FROM sessions WHERE user_id = ? ORDER BY last_active DESC');
+  stmt.bind([userId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function updateSessionActivity(token) {
+  db.run('UPDATE sessions SET last_active = CURRENT_TIMESTAMP WHERE token = ?', [token]);
+  save();
+}
+
+function terminateSession(sessionId, userId) {
+  db.run('DELETE FROM sessions WHERE id = ? AND user_id = ?', [sessionId, userId]);
+  save();
+}
+
+function terminateOtherSessions(currentToken, userId) {
+  db.run('DELETE FROM sessions WHERE user_id = ? AND token != ?', [userId, currentToken]);
+  save();
+}
+
+// --- PRIVACY SETTINGS ---
+
+function getPrivacySettings(userId) {
+  const stmt = prepare('SELECT * FROM privacy_settings WHERE user_id = ?');
+  stmt.bind([userId]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row;
+  }
+  stmt.free();
+  db.run(`INSERT INTO privacy_settings (user_id) VALUES (?)`, [userId]);
+  save();
+  return {
+    last_seen: 'everyone', profile_photo: 'everyone', bio: 'everyone',
+    status: 'contacts', calls: 'everyone', read_receipts: 1, message_history: 1
+  };
+}
+
+function updatePrivacySettings(userId, fields) {
+  const sets = [];
+  const params = [];
+  const allowed = ['last_seen', 'profile_photo', 'bio', 'status', 'calls', 'read_receipts', 'message_history'];
+  allowed.forEach((k) => {
+    if (fields[k] !== undefined) { sets.push(`${k} = ?`); params.push(fields[k]); }
+  });
+  if (sets.length === 0) return;
+  params.push(userId);
+  db.run(`INSERT INTO privacy_settings (user_id) VALUES (?) ON CONFLICT(user_id) DO UPDATE SET ${sets.join(', ')}`, [userId, ...params].slice(0, -1));
+  // Need to re-run with proper params due to ON CONFLICT syntax quirk
+  db.run(`UPDATE privacy_settings SET ${sets.join(', ')} WHERE user_id = ?`, params);
+  save();
+}
+
+// --- DELETE ACCOUNT ---
+
+function scheduleAccountDeletion(userId, days) {
+  const deleteAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  db.run('UPDATE users SET delete_at = ? WHERE id = ?', [deleteAt, userId]);
+  save();
+}
+
+function cancelAccountDeletion(userId) {
+  db.run('UPDATE users SET delete_at = NULL WHERE id = ?', [userId]);
+  save();
+}
+
+function getAccountDeletion(userId) {
+  const stmt = prepare('SELECT delete_at FROM users WHERE id = ?');
+  stmt.bind([userId]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row.delete_at || null;
+  }
+  stmt.free();
+  return null;
+}
+
+// --- VIDEOS (TikTok-style) ---
+
+function createVideo(userId, videoUrl, thumbnail = '', caption = '') {
+  db.run('INSERT INTO videos (user_id, video_url, thumbnail, caption) VALUES (?, ?, ?, ?)', [userId, videoUrl, thumbnail, caption]);
+  const id = getLastInsertId();
+  save();
+  return { id, video_url: videoUrl, thumbnail, caption, likes_count: 0, comments_count: 0, created_at: new Date().toISOString() };
+}
+
+function getVideos(page = 1, limit = 10) {
+  const stmt = prepare(`SELECT v.*, u.display_name, u.avatar, u.username
+    FROM videos v JOIN users u ON v.user_id = u.id
+    ORDER BY v.created_at DESC LIMIT ? OFFSET ?`);
+  stmt.bind([limit, (page - 1) * limit]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function likeVideo(videoId, userId) {
+  try {
+    db.run('INSERT OR IGNORE INTO video_likes (video_id, user_id) VALUES (?, ?)', [videoId, userId]);
+    db.run('UPDATE videos SET likes_count = (SELECT COUNT(*) FROM video_likes WHERE video_id = ?) WHERE id = ?', [videoId, videoId]);
+    save();
+    return true;
+  } catch { return false; }
+}
+
+function unlikeVideo(videoId, userId) {
+  try {
+    db.run('DELETE FROM video_likes WHERE video_id = ? AND user_id = ?', [videoId, userId]);
+    db.run('UPDATE videos SET likes_count = (SELECT COUNT(*) FROM video_likes WHERE video_id = ?) WHERE id = ?', [videoId, videoId]);
+    save();
+    return true;
+  } catch { return false; }
+}
+
+function getVideoLikes(videoId) {
+  const stmt = prepare('SELECT u.id, u.display_name, u.avatar FROM video_likes vl JOIN users u ON vl.user_id = u.id WHERE vl.video_id = ?');
+  stmt.bind([videoId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function addVideoComment(videoId, userId, text) {
+  db.run('INSERT INTO video_comments (video_id, user_id, text) VALUES (?, ?, ?)', [videoId, userId, text]);
+  db.run('UPDATE videos SET comments_count = (SELECT COUNT(*) FROM video_comments WHERE video_id = ?) WHERE id = ?', [videoId, videoId]);
+  save();
+  const id = getLastInsertId();
+  return { id, video_id: videoId, user_id: userId, text, created_at: new Date().toISOString() };
+}
+
+function getVideoComments(videoId) {
+  const stmt = prepare(`SELECT vc.*, u.display_name, u.avatar, u.username
+    FROM video_comments vc JOIN users u ON vc.user_id = u.id WHERE vc.video_id = ? ORDER BY vc.created_at DESC`);
+  stmt.bind([videoId]);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function hasUserLiked(videoId, userId) {
+  const stmt = prepare('SELECT id FROM video_likes WHERE video_id = ? AND user_id = ?');
+  stmt.bind([videoId, userId]);
+  const ok = stmt.step();
+  stmt.free();
+  return ok;
+}
+
+// --- LIVES ---
+
+function startLive(userId, title = '') {
+  db.run('INSERT INTO lives (user_id, title) VALUES (?, ?)', [userId, title]);
+  const id = getLastInsertId();
+  save();
+  return { id, user_id: userId, title, status: 'live', started_at: new Date().toISOString() };
+}
+
+function endLive(liveId, userId) {
+  db.run('UPDATE lives SET status = ?, ended_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?', ['ended', liveId, userId]);
+  save();
+}
+
+function getActiveLives() {
+  const stmt = prepare(`SELECT l.*, u.display_name, u.avatar, u.username
+    FROM lives l JOIN users u ON l.user_id = u.id WHERE l.status = 'live' ORDER BY l.started_at DESC`);
+  const rows = [];
+  while (stmt.step()) rows.push(stmt.getAsObject());
+  stmt.free();
+  return rows;
+}
+
+function close() {
+  if (db) { save(); db.close(); }
+}
+
+module.exports = {
+  init, save,
+  sendCode, verifyCode, findOrCreateUser, createSession, getSession,
+  getUserById, searchUsers, addContact, getContacts,
+  createPrivateChat, getPrivateChat, createGroup, getUserChats, getChatMembers, addChatMember,
+  addMessage, getMessages, markRead, getLastInsertId,
+  createPost, getPosts, viewPost, getPostViews, likePost, unlikePost, hasUserLikedPost, addPostComment, getPostComments,
+  setOnline, setOffline, isOnline, getOnlineUsers,
+  updateProfile, close,
+  addCall, getUserCalls,
+  setTwoStepPassword, verifyTwoStepPassword, disableTwoStep, getTwoStepStatus,
+  blockUser, unblockUser, getBlockedUsers, isBlocked,
+  getUserSessions, updateSessionActivity, terminateSession, terminateOtherSessions,
+  getPrivacySettings, updatePrivacySettings,
+  scheduleAccountDeletion, cancelAccountDeletion, getAccountDeletion,
+  createVideo, getVideos, likeVideo, unlikeVideo, getVideoLikes, addVideoComment, getVideoComments, hasUserLiked,
+  startLive, endLive, getActiveLives
+};
