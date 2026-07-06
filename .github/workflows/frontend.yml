@@ -164,7 +164,8 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+          targets: aarch64-linux-android
+          components: rust-src
 
       - name: Install Android SDK
         uses: android-actions/setup-android@v3
@@ -184,7 +185,7 @@ jobs:
         run: cargo tauri android init
 
       - name: Build Android APK
-        run: cargo tauri android build --apk --target aarch64-linux-android
+        run: cargo tauri android build --apk --target aarch64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
