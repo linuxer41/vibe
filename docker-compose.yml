@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: linuxer
@@ -8,14 +8,14 @@ services:
       POSTGRES_DB: vibe
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./backend/db:/docker-entrypoint-initdb.d
+      # - ./backend/db:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U linuxer -d vibe"]
       interval: 5s
       timeout: 3s
       retries: 10
     ports:
-      - "5432:5432"
+      - "6432:5432"
 
   valkey:
     image: valkey/valkey:8-alpine
@@ -39,8 +39,8 @@ services:
     volumes:
       - media:/app/media
       - cache:/app/cache
-    ports:
-      - "3002:3002"
+    # ports:
+    #   - "3002:3002"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3002/health"]
       interval: 10s
@@ -63,8 +63,8 @@ services:
       VALKEY_URL: redis://valkey:6379
       PORT: "3000"
       NODE_ENV: production
-    ports:
-      - "3000:3000"
+    # ports:
+    #   - "3000:3000"
 
   backend-rust:
     image: ghcr.io/linuxer41/vibe-backend-rust:latest
@@ -82,8 +82,8 @@ services:
       VALKEY_URL: redis://valkey:6379
       PORT: "3001"
       RUST_LOG: info
-    ports:
-      - "3001:3001"
+    # ports:
+    #   - "3001:3001"
 
   frontend:
     image: ghcr.io/linuxer41/vibe-frontend:latest
@@ -93,8 +93,8 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      - "5173:80"
+    # ports:
+    #   - "5173:80"
 
   frontend-preview:
     image: ghcr.io/linuxer41/vibe-frontend-preview:latest
@@ -105,8 +105,8 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
-    ports:
-      - "4173:4173"
+    # ports:
+    #   - "4173:4173"
 
 volumes:
   pgdata:
