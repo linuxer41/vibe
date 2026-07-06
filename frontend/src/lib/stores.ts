@@ -75,10 +75,23 @@ export const passcodeSettings = writable<PasscodeSettings>({ enabled: false, pas
 export const appLocked = writable<boolean>(false);
 
 // Toast
-export const toast = writable<{ message: string; id: number } | null>(null);
+export type ToastType = 'success' | 'error' | 'info';
+export interface ToastItem {
+  id: number;
+  message: string;
+  type: ToastType;
+}
+export const toasts = writable<ToastItem[]>([]);
 let toastId = 0;
-export function showToast(message: string) {
-  toast.set({ message, id: ++toastId });
+export function showToast(message: string, type: ToastType = 'info') {
+  const id = ++toastId;
+  toasts.update((t) => [...t, { id, message, type }]);
+  setTimeout(() => {
+    toasts.update((t) => t.filter((x) => x.id !== id));
+  }, 3000);
+}
+export function dismissToast(id: number) {
+  toasts.update((t) => t.filter((x) => x.id !== id));
 }
 
 // NEW VIBE STORES

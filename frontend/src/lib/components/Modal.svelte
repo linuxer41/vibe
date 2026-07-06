@@ -1,28 +1,67 @@
 <script lang="ts">
-  let { show, onclose, title, children }: {
+  import type { Snippet } from 'svelte';
+
+  interface Action {
+    label: string;
+    variant?: 'primary' | 'danger' | 'ghost';
+    onClick: () => void;
+    disabled?: boolean;
+  }
+
+  let {
+    show,
+    onclose,
+    title,
+    description,
+    actions,
+    size = 'md',
+    children,
+  }: {
     show: boolean;
     onclose: () => void;
     title?: string;
-    children?: import('svelte').Snippet;
+    description?: string;
+    actions?: Action[];
+    size?: 'sm' | 'md' | 'lg';
+    children?: Snippet;
   } = $props();
 </script>
 
 {#if show}
   <div class="modal-overlay" onclick={(e) => { if ((e.target as HTMLElement).classList.contains('modal-overlay')) onclose(); }}>
-    <div class="modal-content" onclick={(e) => e.stopPropagation()}>
+    <div class="modal-content" class:modal-sm={size === 'sm'} class:modal-lg={size === 'lg'} onclick={(e) => e.stopPropagation()}>
       <div class="modal-header">
-        {#if title}
-          <h3 class="modal-title">{title}</h3>
-        {/if}
+        <div>
+          {#if title}
+            <h3 class="modal-title">{title}</h3>
+          {/if}
+          {#if description}
+            <p class="modal-desc">{description}</p>
+          {/if}
+        </div>
         <button class="modal-close" onclick={onclose}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
       </div>
-      <div class="modal-body">
-        {#if children}
+      {#if children}
+        <div class="modal-body">
           {@render children()}
-        {/if}
-      </div>
+        </div>
+      {/if}
+      {#if actions && actions.length > 0}
+        <div class="modal-footer">
+          {#each actions as action}
+            <button
+              class="modal-action"
+              class:modal-action-primary={action.variant === 'primary'}
+              class:modal-action-danger={action.variant === 'danger'}
+              class:modal-action-ghost={action.variant === 'ghost' || !action.variant}
+              onclick={action.onClick}
+              disabled={action.disabled}
+            >{action.label}</button>
+          {/each}
+        </div>
+      {/if}
     </div>
   </div>
 {/if}
@@ -41,18 +80,23 @@
     box-shadow: 0 8px 40px var(--shadow);
     animation: scaleIn 0.2s ease-out;
   }
+  .modal-sm { max-width: 320px; }
+  .modal-lg { max-width: 520px; }
   @keyframes scaleIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
   .modal-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; border-bottom: 1px solid var(--border);
-    min-height: 52px;
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 20px 20px 0; gap: 12px;
   }
   .modal-title {
     font-size: 17px; font-weight: 600; color: var(--text);
+    margin-bottom: 4px;
+  }
+  .modal-desc {
+    font-size: 13px; color: var(--text-2); line-height: 1.5;
   }
   .modal-close {
-    background: none; border: none; color: var(--text-2);
-    cursor: pointer; padding: 6px; border-radius: 50%;
+    background: var(--bg-3); border: none; color: var(--text-2);
+    cursor: pointer; padding: 6px; border-radius: 50%; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     transition: background 0.2s;
   }
@@ -60,4 +104,22 @@
   .modal-body {
     flex: 1; overflow-y: auto; padding: 16px 20px 20px;
   }
+  .modal-footer {
+    display: flex; gap: 8px; padding: 0 20px 20px;
+    flex-wrap: wrap;
+  }
+  .modal-action {
+    flex: 1; padding: 12px 16px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; border: none;
+    cursor: pointer; transition: background 0.2s, transform 0.15s;
+    text-align: center; min-width: 80px;
+  }
+  .modal-action:active { transform: scale(0.97); }
+  .modal-action:disabled { opacity: 0.5; cursor: default; transform: none; }
+  .modal-action-primary { background: var(--accent); color: #000; }
+  .modal-action-primary:hover { background: var(--accent-hover); }
+  .modal-action-danger { background: var(--danger); color: #fff; }
+  .modal-action-danger:hover { background: #dc2626; }
+  .modal-action-ghost { background: var(--bg-3); color: var(--text); }
+  .modal-action-ghost:hover { background: var(--border); }
 </style>
