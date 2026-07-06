@@ -34,6 +34,7 @@ services:
     image: ghcr.io/linuxer41/vibe-storage-server:latest
     build:
       context: storage-server
+    pull_policy: always
     restart: unless-stopped
     volumes:
       - media:/app/media
@@ -50,6 +51,7 @@ services:
     image: ghcr.io/linuxer41/vibe-backend:latest
     build:
       context: backend
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       postgres:
@@ -68,6 +70,7 @@ services:
     image: ghcr.io/linuxer41/vibe-backend-rust:latest
     build:
       context: backend-rust
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       postgres:
@@ -86,11 +89,24 @@ services:
     image: ghcr.io/linuxer41/vibe-frontend:latest
     build:
       context: frontend
+    pull_policy: always
     restart: unless-stopped
     depends_on:
       - backend
     ports:
       - "5173:80"
+
+  frontend-preview:
+    image: ghcr.io/linuxer41/vibe-frontend-preview:latest
+    build:
+      context: frontend
+      dockerfile: Dockerfile.preview
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "4173:4173"
 
 volumes:
   pgdata:

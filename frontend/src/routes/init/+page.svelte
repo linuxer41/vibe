@@ -8,6 +8,8 @@
   import { avatarUrl, initSocket } from '$lib/helpers';
   import Page from '$lib/components/Page.svelte';
   import BottomSheet from '$lib/components/BottomSheet.svelte';
+  import Modal from '$lib/components/Modal.svelte';
+  import BackendSelector from '$lib/components/BackendSelector.svelte';
   import { countries, getDefaultCountry, type Country } from '$lib/countries';
 
   let sk: any = $state(null);
@@ -18,6 +20,22 @@
   let sendingCode = $state(false);
   let verifyingCode = $state(false);
   let savingSetup = $state(false);
+  let showBackendSelector = $state(false);
+  let backendLabel = $state(backendLabelFromStorage());
+
+  function backendLabelFromStorage(): string {
+    if (typeof localStorage === 'undefined') return 'Node.js';
+    const label = localStorage.getItem('wa_backend_label');
+    if (label) return label;
+    const ls = localStorage.getItem('wa_backend');
+    if (ls === 'node' || !ls) return 'Node.js';
+    if (ls === 'rust') return 'Rust';
+    return 'Custom';
+  }
+
+  function onBackendChanged() {
+    backendLabel = backendLabelFromStorage();
+  }
 
   function handleAvatarSelect(e: Event) {
     const input = e.target as HTMLInputElement;
@@ -144,13 +162,19 @@
 
 <Page>
   <div class="init-body">
-    <button class="theme-toggle" onclick={toggleTheme} title={$theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
-      {#if $theme === 'dark'}
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-      {:else}
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-      {/if}
-    </button>
+    <div class="top-actions">
+      <button class="top-btn backend-toggle" onclick={() => showBackendSelector = true} title="Servidor backend">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><path d="M6 6h.01M6 18h.01"/></svg>
+        <span class="backend-label">{backendLabel}</span>
+      </button>
+      <button class="top-btn theme-toggle" onclick={toggleTheme} title={$theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
+        {#if $theme === 'dark'}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        {:else}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        {/if}
+      </button>
+    </div>
     <div class="init-brand">
       <div class="init-logo">
         <svg width="44" height="44" viewBox="0 0 32 32" fill="var(--accent)">
@@ -242,6 +266,10 @@
   </div>
 </Page>
 
+<Modal show={showBackendSelector} onclose={() => showBackendSelector = false} title="Servidor backend">
+  <BackendSelector onclose={() => showBackendSelector = false} onchange={onBackendChanged} />
+</Modal>
+
 <BottomSheet show={showCountrySheet} onclose={() => { showCountrySheet = false; countrySearch = ''; }}>
   {#snippet header()}
     <div class="sheet-search">
@@ -265,14 +293,19 @@
     flex: 1; display: flex; flex-direction: column; align-items: center;
     justify-content: center; padding: 40px 32px; position: relative;
   }
-  .theme-toggle {
+  .top-actions {
     position: absolute; top: 16px; right: 16px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .top-btn {
     width: 40px; height: 40px; border-radius: 50%;
     background: none; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: background 0.2s;
   }
-  .theme-toggle:hover { background: var(--bg-3); }
+  .top-btn:hover { background: var(--bg-3); }
+  .backend-toggle { width: auto; border-radius: 20px; padding: 0 12px; gap: 4px; }
+  .backend-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
   .init-brand {
     text-align: center; margin-bottom: 48px;
   }

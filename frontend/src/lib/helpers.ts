@@ -9,15 +9,17 @@ import type { User, Chat, Message, Post } from './types';
 
 const AVATAR_BASE = 'https://i.pravatar.cc/80';
 const STORAGE_URL = 'http://localhost:3002';
-function getBackend(): string {
+function getBackendUrl(): string {
   if (typeof localStorage !== 'undefined') {
     const ls = localStorage.getItem('wa_backend');
-    if (ls === 'rust' || ls === 'node') return ls;
+    if (ls === 'node') return 'http://localhost:3000';
+    if (ls === 'rust') return 'http://localhost:3001';
+    if (ls && ls.startsWith('http')) return ls;
   }
-  return import.meta.env.VITE_BACKEND || 'node';
+  const mode = import.meta.env.VITE_BACKEND || 'node';
+  return mode === 'rust' ? 'http://localhost:3001' : 'http://localhost:3000';
 }
-export const API_URL = import.meta.env.VITE_API_URL ||
-  (getBackend() === 'rust' ? 'http://localhost:3001' : 'http://localhost:3000');
+export const API_URL = import.meta.env.VITE_API_URL || getBackendUrl();
 
 export function mediaUrl(url: string | undefined | null, opts: { w?: number; h?: number; fit?: string; format?: string; q?: number } = {}): string {
   if (!url) return '';

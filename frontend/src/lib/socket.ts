@@ -2,17 +2,16 @@ import { io } from 'socket.io-client';
 import { FORMAT_JSON, FORMAT_FLATBUFFERS, type WireFormat, detectFormat, encodeEvent, decodeEvent } from './format';
 import type { TypedSocket } from './socket-types';
 
-function getBackend(): string {
-  if (typeof localStorage !== 'undefined') {
-    const ls = localStorage.getItem('wa_backend');
-    if (ls === 'rust' || ls === 'node') return ls;
-  }
-  return import.meta.env.VITE_BACKEND || 'node';
-}
-
 function getSocketUrl(): string {
   if (import.meta.env.VITE_SOCKET_URL) return import.meta.env.VITE_SOCKET_URL;
-  return getBackend() === 'rust' ? 'http://localhost:3001' : 'http://localhost:3000';
+  if (typeof localStorage !== 'undefined') {
+    const ls = localStorage.getItem('wa_backend');
+    if (ls === 'node') return 'http://localhost:3000';
+    if (ls === 'rust') return 'http://localhost:3001';
+    if (ls && ls.startsWith('http')) return ls;
+  }
+  const mode = import.meta.env.VITE_BACKEND || 'node';
+  return mode === 'rust' ? 'http://localhost:3001' : 'http://localhost:3000';
 }
 
 const SOCKET_URL = getSocketUrl();
