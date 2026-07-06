@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
-  import { avatarUrl, loadChats, formatDate } from '$lib/helpers';
+  import { avatarUrl, mediaUrl, loadChats, formatDate } from '$lib/helpers';
   import { typedSocket } from '$lib/socket-types';
   import {
     user, socket, searchQuery, searchResults, contacts, showNewChat, showCreateGroup,
@@ -35,6 +35,14 @@
     if (path === '/shop') return 'shop';
     if (path === '/games') return 'games';
     return 'chats';
+  });
+
+  $effect(() => {
+    const post = $viewingPost;
+    if (post?.id && sk) {
+      sk.emit('join_post', { postId: post.id });
+      return () => sk?.emit('leave_post', { postId: post.id });
+    }
   });
 
   function navTo(path: string) {
@@ -241,9 +249,9 @@
     </div>
     <div class="status-v-body">
       {#if $viewingPost?.media_type === 'image'}
-        <img src={$viewingPost.media} alt="" class="status-v-media" />
+        <img src={mediaUrl($viewingPost.media)} alt="" class="status-v-media" />
       {:else if $viewingPost?.media_type === 'video'}
-        <video src={$viewingPost.media} controls class="status-v-media"></video>
+        <video src={mediaUrl($viewingPost.media)} controls class="status-v-media"></video>
       {:else}
         <p>{$viewingPost?.text}</p>
       {/if}

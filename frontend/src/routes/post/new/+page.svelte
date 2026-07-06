@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
-  import { avatarUrl, loadPosts, API_URL } from '$lib/helpers';
+  import { avatarUrl, loadPosts, uploadViaSocket } from '$lib/helpers';
   import { user, socket, showToast } from '$lib/stores';
   import { typedSocket } from '$lib/socket-types';
+  import UploadProgress from '$lib/components/UploadProgress.svelte';
   import type { User } from '$lib/types';
 
   let usr: User | null = $state(null);
@@ -18,6 +19,9 @@
   let capturedImage: string | null = $state(null);
   let selectedFile: File | null = $state(null);
   let selectedFilePreview: string | null = $state(null);
+
+  let uploadProgress = $state(0);
+  let uploadStatus: 'idle' | 'preparing' | 'uploading' | 'processing' | 'done' | 'error' = $state('idle');
   let fileType: string | null = $state(null);
   let mode: 'text' | 'camera' | 'gallery' = $state('text');
   let uploading = $state(false);
@@ -140,24 +144,33 @@
 
   let publishTimeout: ReturnType<typeof setTimeout> | null = $state(null);
 
-  async function uploadMedia(dataUrl: string): Promise<string | null> {
-    try {
-      const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], 'upload.' + (fileType === 'video' ? 'mp4' : 'jpg'), { type: blob.type });
-      const form = new FormData();
-      form.append('file', file);
-      const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: form });
-      const json = await res.json();
-      return json.ok ? json.url : null;
-    } catch {
-      return null;
-    }
+  function uploadMedia(): Promise<string | null> {
+    return new Promise((resolve) => {
+      if (selectedFile) {
+        uploadViaSocket(sk!, selectedFile, (pct, status) => {
+          uploadProgress = pct;
+          uploadStatus = status as any;
+        }).then(r => resolve(r.ok ? r.url || '' : null));
+      } else if (capturedImage) {
+        const raw = atob(capturedImage.split(',')[1] || '');
+        const buf = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+        uploadViaSocket(sk!, { name: 'upload.jpg', type: 'image/jpeg', data: buf.buffer }, (pct, status) => {
+          uploadProgress = pct;
+          uploadStatus = status as any;
+        }).then(r => resolve(r.ok ? r.url || '' : null));
+      } else {
+        resolve(null);
+      }
+    });
   }
 
   async function publish() {
     if (!sk) { showToast('Sin conexión'); return; }
     const caption = text;
     uploading = true;
+    uploadStatus = selectedFile || capturedImage ? 'preparing' : 'idle';
+    uploadProgress = 0;
     publishTimeout = setTimeout(() => {
       uploading = false;
       showToast('El servidor no responde');
@@ -272,6 +285,8 @@
   <div class="text-area">
     <textarea bind:value={text} placeholder="¿Qué estás pensando?" class="caption-input" maxlength="2000"></textarea>
   </div>
+
+  <UploadProgress progress={uploadProgress} status={uploadStatus} fileName={selectedFile?.name || 'Foto'} fileSize={selectedFile?.size || 0} />
 
   <div class="bottom-bar">
     <div class="char-count">{text.length}/2000</div>

@@ -40,7 +40,7 @@ function connect() {
 
 function startSubscriber(io) {
   if (!sub) { connect(); }
-  const channels = ['chat:messages', 'posts:new', 'videos:new', 'lives:new', 'contacts:status'];
+  const channels = ['chat:messages', 'posts:new', 'posts:interactions', 'videos:new', 'lives:new', 'contacts:status'];
 
   sub.on('message', (channel, message) => {
     try {

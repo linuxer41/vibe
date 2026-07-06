@@ -1,4 +1,4 @@
-const Jimp = require('jimp');
+const sharp = require('sharp');
 const path = require('path');
 
 const COLOR_NAMES = {
@@ -19,15 +19,15 @@ function nearestColorName(r, g, b) {
 
 async function classifyImage(filePath) {
   const tags = [];
-  let image;
+  let meta;
   try {
-    image = await Jimp.read(filePath);
+    meta = await sharp(filePath).metadata();
   } catch {
     return ['corrupted'];
   }
 
-  const width = image.bitmap.width;
-  const height = image.bitmap.height;
+  const width = meta.width;
+  const height = meta.height;
   if (!width || !height) return ['unknown'];
 
   const ext = path.extname(filePath).toLowerCase();
@@ -43,11 +43,11 @@ async function classifyImage(filePath) {
   else tags.push('high_res');
 
   try {
-    const thumb = image.clone().resize(50, 50, Jimp.RESIZE_BILINEAR);
+    const { data } = await sharp(filePath).resize(50, 50, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
     const pixels = [];
-    thumb.scan(0, 0, 50, 50, function(x, y, idx) {
-      pixels.push({ r: this.bitmap.data[idx], g: this.bitmap.data[idx + 1], b: this.bitmap.data[idx + 2] });
-    });
+    for (let i = 0; i < data.length; i += 3) {
+      pixels.push({ r: data[i], g: data[i + 1], b: data[i + 2] });
+    }
 
     const total = pixels.length;
     const avg = pixels.reduce((a, p) => ({ r: a.r + p.r / total, g: a.g + p.g / total, b: a.b + p.b / total }), { r: 0, g: 0, b: 0 });

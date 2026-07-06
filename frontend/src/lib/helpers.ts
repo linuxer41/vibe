@@ -23,8 +23,19 @@ export const API_URL = import.meta.env.VITE_API_URL || getBackendUrl();
 
 export function mediaUrl(url: string | undefined | null, opts: { w?: number; h?: number; fit?: string; format?: string; q?: number } = {}): string {
   if (!url) return '';
-  if (url.startsWith('http')) return url;
-  const base = `${STORAGE_URL}/media${url.startsWith('/') ? '' : '/'}${url.replace(/^\/?(uploads\/|media\/)?/, '')}`;
+
+  // Extract filename from any URL format
+  let filename = url;
+  if (url.startsWith('http://localhost:3001/uploads/') || url.startsWith('http://localhost:3000/uploads/'))
+    filename = url.split('/').pop() || url;
+  else if (url.startsWith('/uploads/') || url.startsWith('uploads/'))
+    filename = url.split('/').pop() || url;
+  else if (url.startsWith(STORAGE_URL))
+    filename = url.split('/').pop() || url;
+  else if (url.startsWith('http'))
+    return url;
+
+  const base = `${STORAGE_URL}/media/${filename}`;
   const params = new URLSearchParams();
   if (opts.w) params.set('w', String(opts.w));
   if (opts.h) params.set('h', String(opts.h));
@@ -37,6 +48,74 @@ export function mediaUrl(url: string | undefined | null, opts: { w?: number; h?:
 
 export function avatarUrl(id: number) {
   return `${AVATAR_BASE}?u=${id}`;
+}
+
+const CHUNK_SIZE = 65536;
+
+export function uploadViaSocket(
+  sk: any,
+  file: File | { name: string; type: string; data: ArrayBuffer },
+  onProgress?: (pct: number, status: string) => void
+): Promise<{ ok: boolean; url?: string; metadata?: any; error?: string }> {
+  return new Promise((resolve) => {
+    const processBuf = (buf: ArrayBuffer, name: string, type: string) => {
+      const totalChunks = Math.ceil(buf.byteLength / CHUNK_SIZE);
+      onProgress?.(0, 'preparing');
+
+      sk.emit('upload_start', { name, mime: type, size: buf.byteLength, totalChunks }, (startRes: any) => {
+        if (!startRes?.ok) {
+          onProgress?.(0, 'error');
+          resolve({ ok: false, error: startRes?.error || 'Error al iniciar upload' });
+          return;
+        }
+        const uploadId = startRes.uploadId;
+        onProgress?.(0, 'uploading');
+        let sent = 0;
+        let idx = 0;
+
+        const sendNext = () => {
+          if (idx >= totalChunks) return;
+          const start = idx * CHUNK_SIZE;
+          const end = Math.min(start + CHUNK_SIZE, buf.byteLength);
+          const chunk = buf.slice(start, end);
+          sent += chunk.byteLength;
+
+          sk.emit('upload_chunk', { uploadId, index: idx, data: chunk }, (chunkRes: any) => {
+            if (!chunkRes?.ok) {
+              sk.emit('upload_cancel', { uploadId });
+              onProgress?.(0, 'error');
+              resolve({ ok: false, error: chunkRes?.error || 'Error en chunk' });
+              return;
+            }
+            const pct = sent / buf.byteLength;
+            onProgress?.(pct, 'uploading');
+            idx++;
+            if (idx >= totalChunks) {
+              onProgress?.(1, 'processing');
+              // Last chunk response includes the final result
+              if (chunkRes.url) {
+                onProgress?.(1, 'done');
+                resolve({ ok: true, url: chunkRes.url, metadata: chunkRes.metadata });
+              }
+            } else {
+              sendNext();
+            }
+          });
+        };
+        sendNext();
+      });
+    };
+
+    if (file instanceof File) {
+      onProgress?.(0, 'preparing');
+      file.arrayBuffer().then(buf => processBuf(buf, file.name, file.type)).catch(() => {
+        onProgress?.(0, 'error');
+        resolve({ ok: false, error: 'Error leyendo archivo' });
+      });
+    } else {
+      processBuf(file.data, file.name, file.type);
+    }
+  });
 }
 
 export function formatTime(iso: string) {

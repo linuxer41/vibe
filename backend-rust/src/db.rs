@@ -63,7 +63,7 @@ pub async fn verify_code(
     let client = pool.get().await?;
     let rows = client
         .query(
-            "SELECT id, expires_at FROM verification_codes WHERE phone = $1 AND code = $2 AND used = 0 ORDER BY id DESC LIMIT 1",
+            "SELECT id, expires_at FROM verification_codes WHERE phone = $1 AND code = $2 AND used = 0 ORDER BY id DESC FETCH FIRST 1 ROWS ONLY",
             &[&phone.to_string(), &code.to_string()],
         )
         .await?;
@@ -166,7 +166,7 @@ pub async fn search_users(
     let client = pool.get().await?;
     let rows = client
         .query(
-            "SELECT id, phone, username, display_name, avatar FROM users WHERE phone LIKE $1 OR username LIKE $2 OR display_name LIKE $3 LIMIT 20",
+            "SELECT id, phone, username, display_name, avatar FROM users WHERE phone LIKE $1 OR username LIKE $2 OR display_name LIKE $3 FETCH FIRST 20 ROWS ONLY",
             &[&like, &like, &like],
         )
         .await?;
@@ -291,9 +291,9 @@ pub async fn get_user_chats(
     let rows = client
         .query(
             "SELECT c.id, c.type, c.name, c.avatar, c.created_at,
-             (SELECT text FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1) as last_message,
-             (SELECT created_at FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1)::text as last_message_time,
-             (SELECT sender_id FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1) as last_sender_id
+             (SELECT text FROM messages WHERE chat_id = c.id ORDER BY id DESC FETCH FIRST 1 ROWS ONLY) as last_message,
+             (SELECT created_at FROM messages WHERE chat_id = c.id ORDER BY id DESC FETCH FIRST 1 ROWS ONLY)::text as last_message_time,
+             (SELECT sender_id FROM messages WHERE chat_id = c.id ORDER BY id DESC FETCH FIRST 1 ROWS ONLY) as last_sender_id
              FROM chats c JOIN chat_members cm ON c.id = cm.chat_id WHERE cm.user_id = $1
              ORDER BY last_message_time DESC NULLS LAST",
             &[&user_id],
@@ -405,7 +405,7 @@ pub async fn get_messages(
                 "SELECT m.*, u.display_name as sender_name, u.avatar as sender_avatar
                  FROM messages m JOIN users u ON m.sender_id = u.id
                  WHERE m.chat_id = $1 AND m.created_at < $2
-                 ORDER BY m.created_at DESC LIMIT $3",
+                 ORDER BY m.created_at DESC FETCH FIRST $3 ROWS ONLY",
                 &[&chat_id, c, &limit],
             )
             .await?
@@ -415,7 +415,7 @@ pub async fn get_messages(
                 "SELECT m.*, u.display_name as sender_name, u.avatar as sender_avatar
                  FROM messages m JOIN users u ON m.sender_id = u.id
                  WHERE m.chat_id = $1
-                 ORDER BY m.created_at DESC LIMIT $2",
+                 ORDER BY m.created_at DESC FETCH FIRST $2 ROWS ONLY",
                 &[&chat_id, &limit],
             )
             .await?
@@ -493,7 +493,7 @@ pub async fn get_user_calls(
              u.id as other_id, u.display_name as other_name, u.avatar as other_avatar
              FROM calls c JOIN users u ON (CASE WHEN c.caller_id = $1 THEN c.callee_id ELSE c.caller_id END) = u.id
              WHERE c.caller_id = $1 OR c.callee_id = $1
-             ORDER BY c.id DESC LIMIT $2",
+             ORDER BY c.id DESC FETCH FIRST $2 ROWS ONLY",
             &[&user_id, &limit],
         )
         .await?;
@@ -570,10 +570,10 @@ pub async fn get_posts(
                 FROM posts p JOIN users u ON p.user_id = u.id
                 WHERE p.user_id = $1 AND p.expires_at > NOW()".to_string();
             if let Some(ref c) = cursor {
-                (format!("{} AND p.created_at < $2 ORDER BY p.created_at DESC LIMIT $3", base),
+                (format!("{} AND p.created_at < $2 ORDER BY p.created_at DESC FETCH FIRST $3 ROWS ONLY", base),
                  vec![&user_id as &(dyn tokio_postgres::types::ToSql + Sync), c as &(dyn tokio_postgres::types::ToSql + Sync), &limit as &(dyn tokio_postgres::types::ToSql + Sync)])
             } else {
-                (format!("{} ORDER BY p.created_at DESC LIMIT $2", base),
+                (format!("{} ORDER BY p.created_at DESC FETCH FIRST $2 ROWS ONLY", base),
                  vec![&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &limit as &(dyn tokio_postgres::types::ToSql + Sync)])
             }
         }
@@ -584,10 +584,10 @@ pub async fn get_posts(
                 WHERE (p.user_id = $1 OR p.user_id IN (SELECT contact_user_id FROM contacts WHERE user_id = $1))
                 AND p.expires_at > NOW()".to_string();
             if let Some(ref c) = cursor {
-                (format!("{} AND p.created_at < $2 ORDER BY p.created_at DESC LIMIT $3", base),
+                (format!("{} AND p.created_at < $2 ORDER BY p.created_at DESC FETCH FIRST $3 ROWS ONLY", base),
                  vec![&user_id as &(dyn tokio_postgres::types::ToSql + Sync), c as &(dyn tokio_postgres::types::ToSql + Sync), &limit as &(dyn tokio_postgres::types::ToSql + Sync)])
             } else {
-                (format!("{} ORDER BY p.created_at DESC LIMIT $2", base),
+                (format!("{} ORDER BY p.created_at DESC FETCH FIRST $2 ROWS ONLY", base),
                  vec![&user_id as &(dyn tokio_postgres::types::ToSql + Sync), &limit as &(dyn tokio_postgres::types::ToSql + Sync)])
             }
         }
@@ -597,10 +597,10 @@ pub async fn get_posts(
                 FROM posts p JOIN users u ON p.user_id = u.id
                 WHERE p.expires_at > NOW()".to_string();
             if let Some(ref c) = cursor {
-                (format!("{} AND p.created_at < $1 ORDER BY p.created_at DESC LIMIT $2", base),
+                (format!("{} AND p.created_at < $1 ORDER BY p.created_at DESC FETCH FIRST $2 ROWS ONLY", base),
                  vec![c as &(dyn tokio_postgres::types::ToSql + Sync), &limit as &(dyn tokio_postgres::types::ToSql + Sync)])
             } else {
-                (format!("{} ORDER BY p.created_at DESC LIMIT $1", base),
+                (format!("{} ORDER BY p.created_at DESC FETCH FIRST $1 ROWS ONLY", base),
                  vec![&limit as &(dyn tokio_postgres::types::ToSql + Sync)])
             }
         }
@@ -1470,7 +1470,7 @@ pub async fn get_videos(
                 "SELECT v.*, u.display_name, u.avatar, u.username
                  FROM videos v JOIN users u ON v.user_id = u.id
                  WHERE v.created_at < $1
-                 ORDER BY v.created_at DESC LIMIT $2",
+                 ORDER BY v.created_at DESC FETCH FIRST $2 ROWS ONLY",
                 &[c, &limit],
             )
             .await?
@@ -1479,7 +1479,7 @@ pub async fn get_videos(
             .query(
                 "SELECT v.*, u.display_name, u.avatar, u.username
                  FROM videos v JOIN users u ON v.user_id = u.id
-                 ORDER BY v.created_at DESC LIMIT $1",
+                 ORDER BY v.created_at DESC FETCH FIRST $1 ROWS ONLY",
                 &[&limit],
             )
             .await?
@@ -2100,22 +2100,43 @@ pub async fn vote_poll(
 pub async fn get_products(
     pool: &DbPool,
     category: &str,
+    cursor: Option<chrono::NaiveDateTime>,
+    limit: i64,
 ) -> Result<Vec<Product>, Box<dyn std::error::Error + Send + Sync>> {
     let client = pool.get().await?;
-    let rows = if category.is_empty() || category == "all" {
-        client
-            .query(
-                "SELECT p.*, u.display_name, u.avatar FROM products p JOIN users u ON p.seller_id = u.id ORDER BY p.created_at DESC",
-                &[],
-            )
-            .await?
-    } else {
-        client
-            .query(
-                "SELECT p.*, u.display_name, u.avatar FROM products p JOIN users u ON p.seller_id = u.id WHERE p.category = $1 ORDER BY p.created_at DESC",
-                &[&category.to_string()],
-            )
-            .await?
+    let rows = match (category.is_empty() || category == "all", cursor) {
+        (true, None) => {
+            client
+                .query(
+                    "SELECT p.*, u.display_name, u.avatar FROM products p JOIN users u ON p.seller_id = u.id ORDER BY p.created_at DESC FETCH FIRST $1 ROWS ONLY",
+                    &[&limit],
+                )
+                .await?
+        }
+        (true, Some(c)) => {
+            client
+                .query(
+                    "SELECT p.*, u.display_name, u.avatar FROM products p JOIN users u ON p.seller_id = u.id WHERE p.created_at < $1 ORDER BY p.created_at DESC FETCH FIRST $2 ROWS ONLY",
+                    &[&c, &limit],
+                )
+                .await?
+        }
+        (false, None) => {
+            client
+                .query(
+                    "SELECT p.*, u.display_name, u.avatar FROM products p JOIN users u ON p.seller_id = u.id WHERE p.category = $1 ORDER BY p.created_at DESC FETCH FIRST $2 ROWS ONLY",
+                    &[&category.to_string(), &limit],
+                )
+                .await?
+        }
+        (false, Some(c)) => {
+            client
+                .query(
+                    "SELECT p.*, u.display_name, u.avatar FROM products p JOIN users u ON p.seller_id = u.id WHERE p.category = $1 AND p.created_at < $2 ORDER BY p.created_at DESC FETCH FIRST $3 ROWS ONLY",
+                    &[&category.to_string(), &c, &limit],
+                )
+                .await?
+        }
     };
     Ok(rows
         .iter()
@@ -2642,7 +2663,7 @@ pub async fn get_focus_status(
     let rows = client
         .query(
             "SELECT id, user_id, mode, started_at::text, ended_at::text, duration_minutes, active
-             FROM focus_sessions WHERE user_id = $1 AND active = 1 ORDER BY id DESC LIMIT 1",
+             FROM focus_sessions WHERE user_id = $1 AND active = 1 ORDER BY id DESC FETCH FIRST 1 ROWS ONLY",
             &[&user_id],
         )
         .await?;
@@ -2671,7 +2692,7 @@ pub async fn get_notifications(
     let rows = client
         .query(
             "SELECT id, user_id, notification_type, message, priority, read, created_at::text
-             FROM smart_notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
+             FROM smart_notifications WHERE user_id = $1 ORDER BY created_at DESC FETCH FIRST 50 ROWS ONLY",
             &[&user_id],
         )
         .await?;
@@ -2886,7 +2907,7 @@ pub async fn get_watch_session(
     let rows = client
         .query(
             "SELECT id, chat_id, creator_id, video_url, playback_time, playing, created_at::text
-             FROM watch_sessions WHERE chat_id = $1 ORDER BY id DESC LIMIT 1",
+             FROM watch_sessions WHERE chat_id = $1 ORDER BY id DESC FETCH FIRST 1 ROWS ONLY",
             &[&chat_id],
         )
         .await?;
@@ -3100,7 +3121,7 @@ pub async fn get_active_call_between(
     let client = pool.get().await?;
     let rows = client
         .query(
-            "SELECT id, caller_id, callee_id, type, status, created_at FROM active_calls WHERE status = 'ringing' AND ((caller_id = $1 AND callee_id = $2) OR (caller_id = $2 AND callee_id = $1)) LIMIT 1",
+            "SELECT id, caller_id, callee_id, type, status, created_at FROM active_calls WHERE status = 'ringing' AND ((caller_id = $1 AND callee_id = $2) OR (caller_id = $2 AND callee_id = $1)) FETCH FIRST 1 ROWS ONLY",
             &[&user1_id, &user2_id],
         )
         .await?;
@@ -3416,7 +3437,7 @@ pub async fn get_recommended_posts(
                  FROM posts p JOIN users u ON p.user_id = u.id
                  WHERE p.expires_at > NOW() AND p.id != ALL($1)
                  ORDER BY recent_engagement DESC, p.created_at DESC
-                 LIMIT $2";
+                 FETCH FIRST $2 ROWS ONLY";
 
     let rows = client
         .query(query_str, &params)
@@ -3456,7 +3477,7 @@ pub async fn get_trending_tags(
             "SELECT pt.tag, COUNT(DISTINCT pi.user_id) as engagers
              FROM post_tags pt
              JOIN post_interactions pi ON pi.post_id = pt.post_id AND pi.created_at > NOW() - INTERVAL '24 hours'
-             GROUP BY pt.tag ORDER BY engagers DESC LIMIT $1",
+             GROUP BY pt.tag ORDER BY engagers DESC FETCH FIRST $1 ROWS ONLY",
             &[&(limit as i64)],
         )
         .await?;

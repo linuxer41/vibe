@@ -2,27 +2,19 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 require('dotenv').config();
 const db = require('./db/init');
 const valkey = require('./valkey');
 const logger = require('./lib/logger');
 const webpush = require('./lib/webpush');
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`);
-  },
-});
-const upload = multer({ storage, limits: { fileSize: 100 * 1024 * 1024 }, fileFilter: (req, file, cb) => {
-  const allowed = /\.(jpg|jpeg|png|gif|webp|mp4|mov|avi|mkv)$/i;
-  if (allowed.test(path.extname(file.originalname))) cb(null, true);
-  else cb(new Error('Tipo de archivo no permitido'));
-} });
+const STORAGE_URL = process.env.STORAGE_URL || 'http://localhost:3002';
+const TEMP_DIR = path.resolve(__dirname, 'tmp_upload');
+const CHUNK_DIR = path.resolve(__dirname, 'tmp_chunks');
+[TEMP_DIR, CHUNK_DIR].forEach(d => { fs.rmSync(d, { recursive: true, force: true }); fs.mkdirSync(d, { recursive: true }); });
 
 const MAX_TEXT_LENGTH = 2000;
 const MAX_TITLE_LENGTH = 120;
@@ -44,24 +36,17 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-const server = http.createServer(app);
+const server = http.createServer({ maxHeaderSize: 65536 }, app);
 const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] }, maxHttpBufferSize: 1e8 });
 valkey.startSubscriber(io);
 
-app.use('/uploads', express.static('uploads'));
+function emitRoom(channel, room, event, data) {
+  if (room) io.to(room).emit(event, data);
+  else io.emit(event, data);
+  valkey.publish(channel, room || '', event, data).catch(() => {});
+}
 
-app.post('/upload', (req, res) => {
-  upload.single('file')(req, res, (err) => {
-    if (err) {
-      if (err instanceof multer.MulterError) return res.status(400).json({ error: 'Archivo demasiado grande' });
-      return res.status(400).json({ error: err.message || 'Error al subir archivo' });
-    }
-    if (!req.file) return res.status(400).json({ error: 'No se envió archivo' });
-    const url = `/uploads/${req.file.filename}`;
-    logger.info({ filename: req.file.filename, size: req.file.size, action: 'upload' }, 'Archivo subido');
-    res.json({ ok: true, url });
-  });
-});
+// NOTA: uploads se manejan via socket (evento 'upload'), no via HTTP
 
 app.get('/vapid-public-key', (req, res) => {
   res.json({ publicKey: webpush.VAPID_PUBLIC_KEY });
@@ -125,6 +110,106 @@ io.on('connection', (socket) => {
       logger.info({ userId: u.id, action: 'restore_session' }, 'Sesión restaurada');
       cb?.({ ok: true, user: u });
     } catch (e) { cb?.({ ok: false }); }
+  });
+
+  // Chunked upload: upload_start → upload_chunk (×N) → auto-finaliza
+  const uploads = new Map();
+  const CHUNK_TIMEOUT = 60000;
+
+  socket.on('upload_start', (data, cb) => {
+    if (!data || !data.name || !data.totalChunks || !data.size)
+      return cb?.({ ok: false, error: 'Faltan metadatos' });
+    const allowed = /\.(jpg|jpeg|png|gif|webp|bmp|mp4|webm|mov|avi|mkv|mp3|wav|ogg|pdf|zip)$/i;
+    if (!allowed.test(path.extname(data.name)))
+      return cb?.({ ok: false, error: 'Tipo de archivo no permitido' });
+    const uploadId = crypto.randomBytes(12).toString('hex');
+    const chunkDir = path.join(CHUNK_DIR, uploadId);
+    fs.mkdirSync(chunkDir, { recursive: true });
+    const entry = { uploadId, name: data.name, type: data.mime || 'application/octet-stream', size: data.size, totalChunks: data.totalChunks, received: 0, chunkDir, chunks: new Set(), timer: null, complete: false };
+    const resetTimer = () => {
+      if (entry.timer) clearTimeout(entry.timer);
+      entry.timer = setTimeout(() => {
+        uploads.delete(uploadId);
+        fs.rm(chunkDir, { recursive: true, force: true }, () => {});
+        logger.warn({ uploadId, action: 'upload_timeout' }, 'Upload chunked expirado');
+      }, CHUNK_TIMEOUT);
+    };
+    resetTimer();
+    uploads.set(uploadId, entry);
+    cb?.({ ok: true, uploadId });
+  });
+
+  socket.on('upload_chunk', async (data, cb) => {
+    if (!data || !data.uploadId || data.index === undefined || !Buffer.isBuffer(data.data))
+      return cb?.({ ok: false, error: 'Datos inválidos' });
+    const entry = uploads.get(data.uploadId);
+    if (!entry || entry.complete) return cb?.({ ok: false, error: 'Upload no encontrado o ya completado' });
+
+    // Reset timeout
+    if (entry.timer) clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => {
+      uploads.delete(data.uploadId);
+      fs.rm(entry.chunkDir, { recursive: true, force: true }, () => {});
+    }, CHUNK_TIMEOUT);
+
+    const chunkPath = path.join(entry.chunkDir, String(data.index));
+    if (entry.chunks.has(data.index)) return cb?.({ ok: true, received: entry.received, total: entry.totalChunks }); // dedup
+    entry.chunks.add(data.index);
+    entry.received += data.data.length;
+    try {
+      fs.writeFileSync(chunkPath, data.data);
+    } catch (e) {
+      return cb?.({ ok: false, error: 'Error escribiendo chunk' });
+    }
+
+    // Check if complete
+    if (entry.chunks.size >= entry.totalChunks) {
+      entry.complete = true;
+      if (entry.timer) clearTimeout(entry.timer);
+      uploads.delete(data.uploadId);
+
+      // Assemble file
+      const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}${path.extname(entry.name)}`;
+      const filePath = path.join(TEMP_DIR, uniqueName);
+      try {
+        const ws = fs.createWriteStream(filePath);
+        for (let i = 0; i < entry.totalChunks; i++) {
+          const cp = path.join(entry.chunkDir, String(i));
+          if (fs.existsSync(cp)) ws.write(fs.readFileSync(cp));
+        }
+        ws.end();
+        await new Promise(r => ws.on('finish', r));
+
+        // Clean up chunk dir
+        fs.rm(entry.chunkDir, { recursive: true, force: true }, () => {});
+
+        // Forward to storage server
+        const fileBuf = fs.readFileSync(filePath);
+        const resp = await fetch(`${STORAGE_URL}/upload/raw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': entry.name, 'X-Mime': entry.type, 'Content-Length': String(fileBuf.length) },
+          body: fileBuf,
+        });
+        const result = await resp.json();
+        fs.unlink(filePath, () => {});
+        cb?.({ ok: true, url: result.url, metadata: result.metadata, received: entry.received, total: entry.size });
+      } catch (e) {
+        fs.unlink(filePath, () => {});
+        logger.error({ err: e.message, uploadId: data.uploadId, action: 'upload_assemble' }, 'Error ensamblando upload');
+        cb?.({ ok: false, error: 'Error al procesar archivo' });
+      }
+    } else {
+      cb?.({ ok: true, received: entry.received, total: entry.size });
+    }
+  });
+
+  socket.on('upload_cancel', (data) => {
+    if (!data || !data.uploadId) return;
+    const entry = uploads.get(data.uploadId);
+    if (!entry) return;
+    if (entry.timer) clearTimeout(entry.timer);
+    uploads.delete(data.uploadId);
+    fs.rm(entry.chunkDir, { recursive: true, force: true }, () => {});
   });
 
   if (!user) return;
@@ -270,7 +355,17 @@ io.on('connection', (socket) => {
     } catch (e) { cb?.({ ok: false }); }
   });
 
-  // --- STATUS ---
+  // --- POSTS ---
+  socket.on('join_post', (data) => {
+    const { postId } = data || {};
+    if (postId) socket.join(`post:${postId}`);
+  });
+
+  socket.on('leave_post', (data) => {
+    const { postId } = data || {};
+    if (postId) socket.leave(`post:${postId}`);
+  });
+
   socket.on('get_posts', async (data, cb) => {
     const { filter, cursor, limit } = data || {};
     try { cb?.(await db.getPosts(user.id, filter || 'all', cursor || null, limit || 20)); } catch { cb?.([]); }
@@ -285,9 +380,11 @@ io.on('connection', (socket) => {
       const post = await db.createPost(user.id, cleanText, media || '', mediaType || 'text');
       cb?.({ ok: true, post });
       db.trackActivity(user.id, 'feed');
+      const fullPost = { ...post, user_id: user.id, display_name: user.display_name, avatar: user.avatar };
       const contactsList = await db.getContacts(user.id);
       contactsList.forEach((c) => {
-        io.to(`user:${c.id}`).emit('new_post', { ...post, user_id: user.id, display_name: user.display_name, avatar: user.avatar });
+        io.to(`user:${c.id}`).emit('new_post', fullPost);
+        valkey.publish('posts:new', `user:${c.id}`, 'new_post', fullPost).catch(() => {});
       });
       logger.info({ userId: user.id, postId: post.id, hasMedia: !!media, action: 'create_post' }, 'Post creado');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'create_post' }, 'Error creando post'); cb?.({ ok: false }); }
@@ -306,7 +403,7 @@ io.on('connection', (socket) => {
     try {
       const liked = await db.likePost(postId, user.id);
       cb?.({ ok: liked });
-      if (liked) io.emit('post_liked', { postId, userId: user.id });
+      if (liked) emitRoom('posts:interactions', `post:${postId}`, 'post_liked', { postId, userId: user.id });
     } catch { cb?.({ ok: false }); }
   });
 
@@ -315,7 +412,7 @@ io.on('connection', (socket) => {
     try {
       await db.unlikePost(postId, user.id);
       cb?.({ ok: true });
-      io.emit('post_unliked', { postId, userId: user.id });
+      emitRoom('posts:interactions', `post:${postId}`, 'post_unliked', { postId, userId: user.id });
     } catch { cb?.({ ok: false }); }
   });
 
@@ -330,9 +427,9 @@ io.on('connection', (socket) => {
     if (!cleanText) return cb?.({ ok: false, error: 'Comentario vacío' });
     try {
       const comment = await db.addPostComment(postId, user.id, cleanText, parentId || null);
-      cb?.({ ok: true, comment });
       const full = { ...comment, display_name: user.display_name, avatar: user.avatar, username: user.username };
-      io.emit('new_post_comment', { postId, comment: full });
+      cb?.({ ok: true, comment: full });
+      emitRoom('posts:interactions', `post:${postId}`, 'new_post_comment', { postId, comment: full });
       logger.info({ userId: user.id, postId, commentId: comment.id, parentId: parentId || null, action: 'add_post_comment' }, 'Comentario añadido');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'add_post_comment' }, 'Error añadiendo comentario'); cb?.({ ok: false }); }
   });
@@ -903,8 +1000,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('get_products', async (data, cb) => {
-    const { category, page, limit } = data || {};
-    try { cb?.(await db.getProducts(category || '', page || 1, limit || 20)); } catch { cb?.([]); }
+    const { category, cursor, limit } = data || {};
+    try { cb?.(await db.getProducts(category || '', cursor || null, limit || 20)); } catch { cb?.([]); }
   });
 
   socket.on('buy_product', async (data, cb) => {
@@ -1159,6 +1256,9 @@ db.init().then(() => {
   setInterval(() => db.cleanupExpiredSessions(), 6 * 60 * 60 * 1000);
 });
 
-process.on('SIGINT', () => { logger.info('Servidor deteniéndose'); db.close(); process.exit(); });
+process.on('SIGINT', () => {
+  logger.info('Servidor deteniéndose');
+  server.close(() => process.exit(0));
+});
 
 module.exports = { sanitize };

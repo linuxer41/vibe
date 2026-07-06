@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { avatarUrl, loadPosts } from '$lib/helpers';
+  import { avatarUrl, loadPosts, uploadViaSocket } from '$lib/helpers';
   import { user, socket, postInput, showToast } from '$lib/stores';
+  import UploadProgress from '$lib/components/UploadProgress.svelte';
   import type { User } from '$lib/types';
 
   let usr: User | null = $state(null);
@@ -20,6 +21,8 @@
   let fileType: string | null = $state(null);
   let mode: 'text' | 'camera' | 'gallery' = $state('text');
   let uploading = $state(false);
+  let uploadProgress = $state(0);
+  let uploadStatus: 'idle' | 'preparing' | 'uploading' | 'processing' | 'done' | 'error' = $state('idle');
 
   async function startCamera() {
     try {
@@ -75,35 +78,45 @@
     fileType = null;
   }
 
-  function createPost() {
+  async function createPost() {
     if (!sk) return;
     const txt = get(postInput);
+    uploading = true;
+    uploadStatus = 'preparing';
+    uploadProgress = 0;
 
-    if (capturedImage || selectedFilePreview) {
-      const media = capturedImage || selectedFilePreview || '';
-      const mt = selectedFilePreview && fileType === 'video' ? 'video' : 'image';
-      uploading = true;
-      sk.emit('create_post', { text: txt, media, mediaType: mt }, (res: any) => {
-        uploading = false;
-        if (res?.ok) {
-          postInput.set('');
-          clearMedia();
-          loadPosts();
-          showToast('Post publicado');
-          if (stream) stopCamera();
-        }
-      });
-    } else if (txt.trim()) {
-      uploading = true;
-      sk.emit('create_post', { text: txt, media: '', mediaType: 'text' }, (res: any) => {
-        uploading = false;
-        if (res?.ok) {
-          postInput.set('');
-          loadPosts();
-          showToast('Post publicado');
-        }
-      });
-    }
+    const doUpload = (): Promise<{ url: string; mt: string }> => new Promise((resolve) => {
+      if (capturedImage) {
+        const raw = atob(capturedImage.split(',')[1] || '');
+        const buf = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+        uploadViaSocket(sk, { name: 'upload.jpg', type: 'image/jpeg', data: buf.buffer }, (pct, st) => { uploadProgress = pct; uploadStatus = st as any; })
+          .then(r => resolve({ url: r.ok ? r.url || '' : '', mt: 'image' }));
+      } else if (selectedFile) {
+        uploadViaSocket(sk, selectedFile, (pct, st) => { uploadProgress = pct; uploadStatus = st as any; })
+          .then(r => {
+            const mt = selectedFile!.type.startsWith('video/') ? 'video' : 'image';
+            resolve({ url: r.ok ? r.url || '' : '', mt });
+          });
+      } else {
+        resolve({ url: '', mt: 'text' });
+      }
+    });
+
+    const { url: mediaUrl, mt } = await doUpload();
+    sk.emit('create_post', { text: txt, media: mediaUrl, mediaType: mt }, (res: any) => {
+      uploading = false;
+      uploadStatus = 'idle';
+      if (res?.ok) {
+        postInput.set('');
+        clearMedia();
+        loadPosts();
+        showToast('Post publicado');
+        if (stream) stopCamera();
+      } else {
+        showToast('Error al publicar');
+      }
+    });
   }
 </script>
 
@@ -151,6 +164,8 @@
     <input type="text" bind:value={$postInput} placeholder="¿Qué estás pensando?" onkeydown={(e) => e.key === 'Enter' && createPost()} />
     <button class="small-btn" onclick={createPost} disabled={uploading}>{uploading ? '...' : 'Publicar'}</button>
   </div>
+
+  <UploadProgress progress={uploadProgress} status={uploadStatus} fileName={selectedFile?.name || 'Foto'} fileSize={selectedFile?.size || 0} />
 </div>
 
 <canvas bind:this={canvasEl} style="display:none"></canvas>

@@ -2,15 +2,20 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const http = require('http');
+const { execSync, exec } = require('child_process');
 const { classifyImage } = require('./classify');
-const Jimp = require('jimp');
+const sharp = require('sharp');
+const multer = require('multer');
 
 const PORT = process.env.PORT || 3002;
 const MEDIA_DIR = path.resolve(__dirname, 'media');
 const CACHE_DIR = path.resolve(__dirname, 'cache');
+const TEMP_DIR = path.resolve(__dirname, 'tmp_upload');
 
-fs.mkdirSync(MEDIA_DIR, { recursive: true });
-fs.mkdirSync(CACHE_DIR, { recursive: true });
+[MEDIA_DIR, CACHE_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
+fs.rmSync(TEMP_DIR, { recursive: true, force: true });
+fs.mkdirSync(TEMP_DIR, { recursive: true });
 
 const app = express();
 
@@ -21,28 +26,279 @@ const MIME_TYPES = {
   '.ogg': 'video/ogg', '.mp3': 'audio/mpeg', '.wav': 'audio/wav',
   '.pdf': 'application/pdf', '.zip': 'application/zip',
 };
-
 const EXT_TO_MIME = {
   jpeg: 'image/jpeg', jpg: 'image/jpeg', png: 'image/png',
   gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp',
 };
+const MAX_IMAGE_DIM = 1920;
+const ALLOWED_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp',
+  '.mp4', '.webm', '.mov', '.avi', '.mkv',
+  '.mp3', '.wav', '.ogg', '.pdf', '.zip'];
+const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+
+const upload = multer({
+  dest: TEMP_DIR,
+  limits: { fileSize: 100 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (ALLOWED_EXTS.includes(path.extname(file.originalname).toLowerCase())) cb(null, true);
+    else cb(new Error('Tipo de archivo no permitido'));
+  },
+});
 
 function getCacheKey(filename, opts) {
   const hash = crypto.createHash('md5').update(JSON.stringify(opts)).digest('hex').slice(0, 8);
   const ext = path.extname(filename);
-  return `${path.basename(filename, ext)}_${hash}${opts.format === 'webp' ? '.webp' : opts.format === 'jpeg' || opts.format === 'jpg' ? '.jpg' : opts.format === 'png' ? '.png' : ext}`;
+  const fmt = (opts.format === 'webp' ? '.webp' : opts.format === 'jpeg' || opts.format === 'jpg' ? '.jpg' : opts.format === 'png' ? '.png' : ext);
+  return `${path.basename(filename, ext)}_${hash}${fmt}`;
 }
 
-app.get(/^\/media\/(.+)/, async (req, res) => {
-  const reqPath = req.params[0];
-  const filePath = path.join(MEDIA_DIR, reqPath);
-  const safePath = path.resolve(filePath);
-  if (!safePath.startsWith(MEDIA_DIR)) return res.status(403).send('Forbidden');
-  if (!fs.existsSync(safePath)) return res.status(404).send('Not found');
+function ffprobeAvailable() {
+  try { execSync('ffprobe -version', { stdio: 'ignore' }); return true; }
+  catch { return false; }
+}
 
+function probeVideo(filePath) {
+  return new Promise((resolve) => {
+    if (!ffprobeAvailable()) return resolve({});
+    exec(`ffprobe -v quiet -print_format json -show_format -show_streams "${filePath}"`, { timeout: 10000 }, (err, stdout) => {
+      if (err) return resolve({});
+      try {
+        const info = JSON.parse(stdout);
+        const videoStream = (info.streams || []).find(s => s.codec_type === 'video');
+        const audioStream = (info.streams || []).find(s => s.codec_type === 'audio');
+        resolve({
+          duration: info.format?.duration ? parseFloat(info.format.duration) : null,
+          width: videoStream?.width || null, height: videoStream?.height || null,
+          codec: videoStream?.codec_name || null, audio_codec: audioStream?.codec_name || null,
+          fps: videoStream?.r_frame_rate || null,
+          bitrate: info.format?.bit_rate ? parseInt(info.format.bit_rate) : null,
+        });
+      } catch { resolve({}); }
+    });
+  });
+}
+
+function extractFrame(filePath, outputPath) {
+  return new Promise((resolve) => {
+    if (!ffprobeAvailable()) return resolve(false);
+    exec(`ffmpeg -y -i "${filePath}" -vframes 1 -an -s 640x360 "${outputPath}"`, { timeout: 15000 }, (err) => {
+      resolve(!err && fs.existsSync(outputPath));
+    });
+  });
+}
+
+function nearestColorName(r, g, b) {
+  const COLORS = {
+    red: { r: 255, g: 0, b: 0 }, orange: { r: 255, g: 165, b: 0 }, yellow: { r: 255, g: 255, b: 0 },
+    green: { r: 0, g: 128, b: 0 }, cyan: { r: 0, g: 255, b: 255 }, blue: { r: 0, g: 0, b: 255 },
+    purple: { r: 128, g: 0, b: 128 }, pink: { r: 255, g: 192, b: 203 }, brown: { r: 165, g: 42, b: 42 },
+    white: { r: 255, g: 255, b: 255 }, gray: { r: 128, g: 128, b: 128 }, black: { r: 0, g: 0, b: 0 },
+  };
+  let minDist = Infinity, name = 'unknown';
+  for (const [n, c] of Object.entries(COLORS)) {
+    const d = Math.sqrt((r - c.r) ** 2 + (g - c.g) ** 2 + (b - c.b) ** 2);
+    if (d < minDist) { minDist = d; name = n; }
+  }
+  return name;
+}
+
+async function extractImageMetadata(filePath) {
+  const meta = await sharp(filePath).metadata();
+  const w = meta.width;
+  const h = meta.height;
+  const ext = path.extname(filePath).toLowerCase();
+  const tags = [ext.replace('.', '')];
+
+  if (w > h * 1.1) tags.push('landscape');
+  else if (h > w * 1.1) tags.push('portrait');
+  else tags.push('square');
+
+  const mp = (w * h) / 1_000_000;
+  if (mp < 0.3) tags.push('low_res');
+  else if (mp < 2) tags.push('medium_res');
+  else tags.push('high_res');
+
+  let dominantColor = 'gray';
+  try {
+    const { data } = await sharp(filePath).resize(32, 32, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
+    const pixels = [];
+    for (let i = 0; i < data.length; i += 3) {
+      pixels.push({ r: data[i], g: data[i + 1], b: data[i + 2] });
+    }
+    const total = pixels.length;
+    const avg = pixels.reduce((a, p) => ({ r: a.r + p.r / total, g: a.g + p.g / total, b: a.b + p.b / total }), { r: 0, g: 0, b: 0 });
+    const brightness = avg.r * 0.299 + avg.g * 0.587 + avg.b * 0.114;
+    tags.push(brightness > 200 ? 'very_bright' : brightness > 150 ? 'bright' : brightness > 80 ? 'medium' : brightness > 40 ? 'dark' : 'very_dark');
+    dominantColor = nearestColorName(Math.round(avg.r), Math.round(avg.g), Math.round(avg.b));
+    tags.push(`${dominantColor}_dominant`);
+    const vibrant = pixels.filter(p => Math.max(p.r, p.g, p.b) - Math.min(p.r, p.g, p.b) > 80).length;
+    tags.push(vibrant / total > 0.3 ? 'vibrant' : 'muted');
+    const avgSat = pixels.reduce((a, p) => {
+      const max = Math.max(p.r, p.g, p.b) / 255, min = Math.min(p.r, p.g, p.b) / 255;
+      return a + (max === 0 ? 0 : (max - min) / max);
+    }, 0) / total;
+    tags.push(avgSat > 0.5 ? 'saturated' : avgSat > 0.2 ? 'moderate' : 'desaturated');
+  } catch {}
+
+  return { width: w, height: h, tags, dominant_color: dominantColor };
+}
+
+async function processImage(filePath, filename) {
+  const ext = path.extname(filename).toLowerCase();
+  let meta;
+  try { meta = await sharp(filePath).metadata(); }
+  catch { return { error: 'Cannot read image' }; }
+
+  const originalWidth = meta.width;
+  const originalHeight = meta.height;
+
+  let pipeline = sharp(filePath);
+  if (originalWidth > MAX_IMAGE_DIM || originalHeight > MAX_IMAGE_DIM) {
+    if (originalWidth > originalHeight)
+      pipeline = pipeline.resize(MAX_IMAGE_DIM);
+    else
+      pipeline = pipeline.resize(null, MAX_IMAGE_DIM);
+  }
+
+  const imgMeta = await extractImageMetadata(filePath);
+  const tags = imgMeta.tags;
+
+  const newFilename = `${path.basename(filename, ext)}.webp`;
+  const outputPath = path.join(MEDIA_DIR, newFilename);
+  try {
+    await pipeline.webp({ quality: 82 }).toFile(outputPath);
+    if (fs.existsSync(filePath) && filePath !== outputPath) fs.unlink(filePath, () => {});
+  } catch (e) {
+    const fallbackPath = path.join(MEDIA_DIR, filename);
+    fs.renameSync(filePath, fallbackPath);
+    return { filename, width: meta.width, height: meta.height, tags, error: `webp conversion failed: ${e.message}` };
+  }
+
+  return { filename: newFilename, width: meta.width, height: meta.height, original_width: originalWidth, original_height: originalHeight, tags };
+}
+
+async function processVideo(filePath, filename) {
+  let meta = {};
+  try { meta = await probeVideo(filePath); } catch {}
+
+  const thumbFilename = `${path.basename(filename, path.extname(filename))}_thumb.jpg`;
+  const thumbPath = path.join(MEDIA_DIR, thumbFilename);
+  const hasThumb = await extractFrame(filePath, thumbPath);
+  if (hasThumb) {
+    try {
+      const thumbMeta = await sharp(thumbPath).metadata();
+      if (thumbMeta.width > 640) await sharp(thumbPath).resize(640).toFile(thumbPath + '_tmp').then(() => fs.renameSync(thumbPath + '_tmp', thumbPath));
+    } catch {}
+  }
+
+  const destPath = path.join(MEDIA_DIR, filename);
+  fs.renameSync(filePath, destPath);
+
+  return {
+    filename, thumbnail: hasThumb ? thumbFilename : null,
+    width: meta.width || null, height: meta.height || null,
+    duration: meta.duration || null, codec: meta.codec || null,
+    audio_codec: meta.audio_codec || null, fps: meta.fps || null,
+    bitrate: meta.bitrate || null,
+    tags: ['video', path.extname(filename).replace('.', '').toLowerCase()],
+  };
+}
+
+async function processAndClassify(filePath, uniqueName, originalName, mime, fileSize) {
+  const ext = path.extname(uniqueName).toLowerCase();
+  const result = { filename: uniqueName, original_name: originalName, mime_type: mime, file_size: fileSize, width: null, height: null, duration: null, thumbnail: null, tags: [], error: null };
+
+  if (mime.startsWith('image/') && ext !== '.gif') {
+    const imgResult = await processImage(filePath, uniqueName);
+    Object.assign(result, imgResult);
+    result.mime_type = 'image/webp';
+  } else if (mime.startsWith('video/')) {
+    const vidResult = await processVideo(filePath, uniqueName);
+    Object.assign(result, vidResult);
+  } else {
+    const destPath = path.join(MEDIA_DIR, uniqueName);
+    if (filePath !== destPath) fs.renameSync(filePath, destPath);
+  }
+
+  if (result.tags.length < 3 && result.filename && !result.error) {
+    try {
+      const mediaPath = path.join(MEDIA_DIR, result.filename);
+      if (fs.existsSync(mediaPath)) {
+        const deepTags = await classifyImage(mediaPath);
+        result.tags = [...new Set([...result.tags, ...deepTags])];
+      }
+    } catch {}
+  }
+
+  return result;
+}
+
+// --- Multipart upload (fallback) ---
+app.post('/upload', (req, res) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) return res.status(400).json({ ok: false, error: 'Archivo demasiado grande' });
+      return res.status(400).json({ ok: false, error: err.message || 'Error al subir archivo' });
+    }
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No se envió archivo' });
+
+    const { path: tempPath, originalname, mimetype, size } = req.file;
+    const ext = path.extname(originalname).toLowerCase();
+    if (!ALLOWED_EXTS.includes(ext)) {
+      fs.unlink(tempPath, () => {});
+      return res.status(400).json({ ok: false, error: 'Tipo de archivo no permitido' });
+    }
+
+    const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+    const filePath = path.join(TEMP_DIR, uniqueName);
+    fs.renameSync(tempPath, filePath);
+
+    try {
+      const result = await processAndClassify(filePath, uniqueName, originalname, mimetype, size);
+      const url = `http://localhost:${PORT}/media/${result.filename}`;
+      res.json({ ok: true, url, metadata: result });
+    } catch (e) {
+      const destPath = path.join(MEDIA_DIR, uniqueName);
+      if (fs.existsSync(filePath)) fs.renameSync(filePath, destPath);
+      const url = `http://localhost:${PORT}/media/${uniqueName}`;
+      res.json({ ok: true, url, metadata: { filename: uniqueName, error: e.message } });
+    }
+  });
+});
+
+// --- Raw binary upload (no multer) ---
+app.post('/upload/raw', express.raw({ limit: '100mb', type: 'application/octet-stream' }), async (req, res) => {
+  const originalName = req.headers['x-filename'] || 'file.bin';
+  const ext = path.extname(originalName).toLowerCase();
+  if (!ALLOWED_EXTS.includes(ext)) return res.status(400).json({ ok: false, error: 'Tipo de archivo no permitido' });
+
+  const buf = req.body;
+  if (!buf || !Buffer.isBuffer(buf) || buf.length === 0)
+    return res.status(400).json({ ok: false, error: 'No se recibieron bytes' });
+
+  const mime = req.headers['x-mime'] || MIME_TYPES[ext] || 'application/octet-stream';
+
+  const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+  const filePath = path.join(TEMP_DIR, uniqueName);
+  fs.writeFileSync(filePath, buf);
+
+  try {
+    const result = await processAndClassify(filePath, uniqueName, originalName, mime, buf.length);
+    const url = `http://localhost:${PORT}/media/${result.filename}`;
+    res.json({ ok: true, url, metadata: result });
+  } catch (e) {
+    const destPath = path.join(MEDIA_DIR, uniqueName);
+    if (fs.existsSync(filePath)) fs.renameSync(filePath, destPath);
+    const url = `http://localhost:${PORT}/media/${uniqueName}`;
+    res.json({ ok: true, url, metadata: { filename: uniqueName, error: e.message } });
+  }
+});
+
+async function serveMedia(safePath, req, res) {
   const stat = fs.statSync(safePath);
   const ext = path.extname(safePath).toLowerCase();
   const mime = MIME_TYPES[ext] || 'application/octet-stream';
+  const isImage = mime.startsWith('image/') && ext !== '.gif';
 
   const w = parseInt(req.query.w) || 0;
   const h = parseInt(req.query.h) || 0;
@@ -50,48 +306,56 @@ app.get(/^\/media\/(.+)/, async (req, res) => {
   const format = req.query.format || ext.slice(1);
   const quality = parseInt(req.query.q) || 80;
 
-  const isImage = mime.startsWith('image/') && ext !== '.gif';
-
   if (isImage && (w > 0 || h > 0 || format !== ext.slice(1))) {
     const opts = { w, h, fit, format, quality };
     const cacheKey = getCacheKey(path.basename(safePath), opts);
     const cachePath = path.join(CACHE_DIR, cacheKey);
-
     if (fs.existsSync(cachePath)) {
       res.set({ 'Content-Type': EXT_TO_MIME[opts.format] || mime, 'Cache-Control': 'public, max-age=31536000' });
       return res.sendFile(cachePath);
     }
-
     try {
-      const image = await Jimp.read(safePath);
+      let pipeline = sharp(safePath);
       if (w > 0 || h > 0) {
-        if (fit === 'cover') image.cover(w, h);
-        else if (fit === 'contain') image.contain(w, h);
-        else image.resize(w, h);
+        const fitOpt = fit === 'cover' ? 'cover' : fit === 'contain' ? 'contain' : 'fill';
+        pipeline = pipeline.resize(w || null, h || null, { fit: fitOpt });
       }
-      if (quality < 100) image.quality(quality);
       const mimeType = EXT_TO_MIME[opts.format] || 'image/jpeg';
-      const buf = await image.getBufferAsync(mimeType);
+      if (mimeType === 'image/webp') pipeline = pipeline.webp({ quality });
+      else if (mimeType === 'image/png') pipeline = pipeline.png({ quality: quality > 90 ? undefined : Math.round(quality / 10) });
+      else pipeline = pipeline.jpeg({ quality });
+      const buf = await pipeline.toBuffer();
       fs.writeFile(cachePath, buf, () => {});
       res.set({ 'Content-Type': mimeType, 'Cache-Control': 'public, max-age=31536000' });
-      res.send(buf);
+      return res.send(buf);
     } catch (e) {
       console.error('[storage] processing error:', e.message);
-      res.sendFile(safePath);
-    }
-  } else {
-    res.set({ 'Content-Type': mime, 'Cache-Control': 'public, max-age=31536000', 'Accept-Ranges': 'bytes' });
-    if (req.headers.range) {
-      const parts = req.headers.range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-      res.status(206).set({ 'Content-Range': `bytes ${start}-${end}/${stat.size}`, 'Content-Length': end - start + 1 });
-      const stream = fs.createReadStream(safePath, { start, end });
-      stream.pipe(res);
-    } else {
-      res.sendFile(safePath);
+      return res.sendFile(safePath);
     }
   }
+
+  res.set({ 'Content-Type': mime, 'Cache-Control': 'public, max-age=31536000', 'Accept-Ranges': 'bytes' });
+  if (req.headers.range) {
+    const parts = req.headers.range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10);
+    const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+    res.status(206).set({ 'Content-Range': `bytes ${start}-${end}/${stat.size}`, 'Content-Length': end - start + 1 });
+    fs.createReadStream(safePath, { start, end }).pipe(res);
+  } else {
+    res.sendFile(safePath);
+  }
+}
+
+app.get(/^\/(media|uploads)\/(.+)/, (req, res) => {
+  const filePath = path.join(MEDIA_DIR, req.params[1]);
+  const safePath = path.resolve(filePath);
+  if (!safePath.startsWith(MEDIA_DIR)) return res.status(403).send('Forbidden');
+  if (!fs.existsSync(safePath)) {
+    const webpPath = safePath.replace(/\.\w+$/, '.webp');
+    if (fs.existsSync(webpPath)) return serveMedia(webpPath, req, res);
+    return res.status(404).send('Not found');
+  }
+  serveMedia(safePath, req, res);
 });
 
 app.post('/classify', express.json({ limit: '1mb' }), async (req, res) => {
@@ -104,15 +368,24 @@ app.post('/classify', express.json({ limit: '1mb' }), async (req, res) => {
     const tags = await classifyImage(safePath);
     res.json({ ok: true, tags });
   } catch (e) {
-    console.error('[classify] error:', e.message);
     res.status(500).json({ ok: false, error: e.message });
   }
 });
 
 app.get('/health', (_, res) => res.json({ ok: true, uptime: process.uptime() }));
 
-app.listen(PORT, () => {
-  console.log(`[storage] servidor de archivos estáticos en http://localhost:${PORT}`);
-  console.log(`[storage] media dir: ${MEDIA_DIR}`);
-  console.log(`[storage] cache dir: ${CACHE_DIR}`);
+const server = http.createServer({ maxHeaderSize: 65536 }, app);
+server.listen(PORT, () => {
+  console.log('[storage] servidor en http://localhost:' + PORT);
+  console.log('[storage] media:', MEDIA_DIR);
+  console.log('[storage] cache:', CACHE_DIR);
 });
+
+function shutdown() {
+  console.log('[storage] shutting down...');
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 3000);
+}
+
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

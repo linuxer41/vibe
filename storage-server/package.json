@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+"start": "node server.js",
+"dev": "nodemon --watch . --ext js,json --ignore node_modules/ --ignore media/ --ignore cache/ --ignore tmp_upload/ --signal SIGTERM server.js"
   },
   "keywords": [],
   "author": "",
@@ -13,7 +14,10 @@
   "dependencies": {
     "@img/sharp-wasm32": "^0.35.3",
     "express": "^5.2.1",
-    "jimp": "^0.22.12",
+    "multer": "^2.2.0",
     "sharp": "^0.35.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
   }
 }

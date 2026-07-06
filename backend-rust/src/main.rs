@@ -147,7 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .route("/vapid-public-key", axum::routing::get(|| async { Json(json!({"key": crate::STATE.get().map(|s| s.push.vapid_public_key.clone()).unwrap_or_default()})) }))
         .route("/push/subscribe", axum::routing::post(push_subscribe_handler))
         .route("/push/unsubscribe", axum::routing::post(push_unsubscribe_handler))
-        .nest_service("/uploads", tower_http::services::ServeDir::new("uploads"))
+        .nest_service("/uploads", tower_http::services::ServeDir::new("../storage-server/media"))
         .layer(layer)
         .layer(CorsLayer::permissive());
 

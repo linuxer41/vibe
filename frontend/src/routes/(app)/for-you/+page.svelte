@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
-  import { avatarUrl } from '$lib/helpers';
+  import { avatarUrl, mediaUrl } from '$lib/helpers';
   import { user, socket, showToast } from '$lib/stores';
   import { typedSocket } from '$lib/socket-types';
   import type { User, Post } from '$lib/types';
@@ -138,9 +138,9 @@
   {#each posts as post, i (post.id)}
     <div class="fyp-card" data-index={i} onclick={(e) => handleDoubleTap(e, post)}>
       {#if post.media_type === 'image' && post.media}
-        <img src={post.media} alt="" class="fyp-media" />
+        <img src={mediaUrl(post.media, { w: 400, h: 600, fit: 'cover' })} alt="" class="fyp-media" />
       {:else if post.media_type === 'video' && post.media}
-        <video src={post.media} muted loop playsinline class="fyp-media" preload="metadata"></video>
+        <video src={mediaUrl(post.media)} muted loop playsinline class="fyp-media" preload="metadata"></video>
       {:else}
         <div class="fyp-text-bg">
           <p class="fyp-text-only">{post.text}</p>

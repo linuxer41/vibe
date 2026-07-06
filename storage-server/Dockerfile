@@ -6,7 +6,7 @@ RUN npm ci
 
 FROM node:20-alpine
 WORKDIR /app
-RUN apk add --no-cache tini
+RUN apk add --no-cache tini ffmpeg
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p media cache

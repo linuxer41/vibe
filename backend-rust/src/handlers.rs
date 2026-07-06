@@ -561,6 +561,9 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
                 .await
                 .unwrap_or(false);
             let _ = ack.send(&serde_json::json!({"ok": liked}));
+            if liked {
+                let _ = socket.within(format!("post:{}", post_id)).emit("post_liked", &serde_json::json!({"postId": post_id, "userId": user_id}));
+            }
         },
     );
 
@@ -574,6 +577,7 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let post_id = data.get("postId").and_then(|v| v.as_i64()).unwrap_or(0);
             let _ = db::unlike_post(&state.db, post_id, user_id).await;
             let _ = ack.send(&serde_json::json!({"ok": true}));
+            let _ = socket.within(format!("post:{}", post_id)).emit("post_unliked", &serde_json::json!({"postId": post_id, "userId": user_id}));
         },
     );
 
@@ -609,10 +613,25 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             match db::add_post_comment(&state.db, post_id, user_id, text, parent_id).await {
                 Ok(mut comment) => {
                     let user = get_user_by_id(&state, user_id).await;
-                    comment.display_name = Some(user.display_name);
-                    comment.avatar = Some(user.avatar);
-                    comment.username = Some(user.username);
+                    comment.display_name = Some(user.display_name.clone());
+                    comment.avatar = Some(user.avatar.clone());
+                    comment.username = Some(user.username.clone());
                     let _ = ack.send(&serde_json::json!({"ok": true, "comment": comment}));
+                    let full = serde_json::json!({
+                        "postId": post_id,
+                        "comment": {
+                            "id": comment.id,
+                            "post_id": comment.post_id,
+                            "user_id": comment.user_id,
+                            "text": comment.text,
+                            "parent_id": comment.parent_id,
+                            "created_at": comment.created_at,
+                            "display_name": user.display_name,
+                            "avatar": user.avatar,
+                            "username": user.username,
+                        }
+                    });
+                    let _ = socket.within(format!("post:{}", post_id)).emit("new_post_comment", &full);
                 }
                 Err(e) => {
                     warn!("add_post_comment error: {}", e);
@@ -1360,6 +1379,30 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
         },
     );
 
+    // --- POST ROOMS ---
+
+    socket.on(
+        "join_post",
+        async |socket: SocketRef,
+         Data(data): Data<Value>,
+         _ack: AckSender| {
+            if let Some(post_id) = data.get("postId").and_then(|v| v.as_i64()) {
+                let _ = socket.join(format!("post:{}", post_id));
+            }
+        },
+    );
+
+    socket.on(
+        "leave_post",
+        async |socket: SocketRef,
+         Data(data): Data<Value>,
+         _ack: AckSender| {
+            if let Some(post_id) = data.get("postId").and_then(|v| v.as_i64()) {
+                let _ = socket.leave(format!("post:{}", post_id));
+            }
+        },
+    );
+
     // --- CHANNELS ---
 
     socket.on(
@@ -1652,7 +1695,12 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
          ack: AckSender| {
             let state = get_state();
             let category = data.get("category").and_then(|v| v.as_str()).unwrap_or("all");
-            match db::get_products(&state.db, category).await {
+            let cursor = data
+                .get("cursor")
+                .and_then(|v| v.as_str())
+                .and_then(|s| chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f").ok());
+            let limit = data.get("limit").and_then(|v| v.as_i64()).unwrap_or(20);
+            match db::get_products(&state.db, category, cursor, limit).await {
                 Ok(products) => {
                     let _ = ack.send(&products);
                 }

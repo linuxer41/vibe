@@ -42,7 +42,7 @@ async function sendCode(phone) {
 
 async function verifyCode(phone, code) {
   const { rows } = await pool.query(
-    'SELECT id, expires_at FROM verification_codes WHERE phone = $1 AND code = $2 AND used = 0 ORDER BY id DESC LIMIT 1',
+    'SELECT id, expires_at FROM verification_codes WHERE phone = $1 AND code = $2 AND used = 0 ORDER BY id DESC FETCH FIRST 1 ROWS ONLY',
     [phone, code]
   );
   if (rows.length > 0 && new Date(rows[0].expires_at) > new Date()) {
@@ -101,7 +101,7 @@ async function getUserById(id) {
 async function searchUsers(query) {
   const like = `%${query}%`;
   const { rows } = await pool.query(
-    'SELECT id, phone, username, display_name, avatar FROM users WHERE phone LIKE $1 OR username LIKE $2 OR display_name LIKE $3 LIMIT 20',
+    'SELECT id, phone, username, display_name, avatar FROM users WHERE phone LIKE $1 OR username LIKE $2 OR display_name LIKE $3 FETCH FIRST 20 ROWS ONLY',
     [like, like, like]
   );
   return rows;
@@ -177,9 +177,9 @@ async function createGroup(name, createdBy, memberIds) {
 async function getUserChats(userId) {
   const { rows } = await pool.query(
     `SELECT c.id, c.type, c.name, c.avatar, c.created_at, c.pinned,
-     (SELECT text FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1) as last_message,
-     (SELECT created_at FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1) as last_message_time,
-     (SELECT sender_id FROM messages WHERE chat_id = c.id ORDER BY id DESC LIMIT 1) as last_sender_id
+     (SELECT text FROM messages WHERE chat_id = c.id ORDER BY id DESC FETCH FIRST 1 ROWS ONLY) as last_message,
+     (SELECT created_at FROM messages WHERE chat_id = c.id ORDER BY id DESC FETCH FIRST 1 ROWS ONLY) as last_message_time,
+     (SELECT sender_id FROM messages WHERE chat_id = c.id ORDER BY id DESC FETCH FIRST 1 ROWS ONLY) as last_sender_id
      FROM chats c JOIN chat_members cm ON c.id = cm.chat_id WHERE cm.user_id = $1
      ORDER BY c.pinned DESC, last_message_time DESC NULLS LAST`,
     [userId]
@@ -245,7 +245,7 @@ async function getMessages(chatId, limit = 50, cursor = null) {
     sql += ' AND m.created_at < $2';
     params.push(cursor);
   }
-  sql += ' ORDER BY m.created_at DESC LIMIT $' + (params.length + 1);
+  sql += ' ORDER BY m.created_at DESC FETCH FIRST $' + (params.length + 1) + ' ROWS ONLY';
   params.push(limit);
   const { rows } = await pool.query(sql, params);
   return rows.reverse();
@@ -277,7 +277,7 @@ async function getUserCalls(userId, limit = 30) {
      u.id as other_id, u.display_name as other_name, u.avatar as other_avatar
      FROM calls c JOIN users u ON (CASE WHEN c.caller_id = $1 THEN c.callee_id ELSE c.caller_id END) = u.id
      WHERE c.caller_id = $1 OR c.callee_id = $1
-     ORDER BY c.id DESC LIMIT $2`,
+     ORDER BY c.id DESC FETCH FIRST $2 ROWS ONLY`,
     [userId, limit]
   );
   return rows;
@@ -506,7 +506,7 @@ async function getPosts(userId, filter = 'all', cursor = null, limit = 20) {
     (SELECT COUNT(*) FROM post_views WHERE post_id = p.id) as views
     FROM posts p JOIN users u ON p.user_id = u.id
     WHERE ${conditions.join(' AND ')}
-    ORDER BY p.created_at DESC LIMIT ${limitP}`;
+    ORDER BY p.created_at DESC FETCH FIRST ${limitP} ROWS ONLY`;
   const { rows } = await pool.query(sql, params);
   return rows;
 }
@@ -753,14 +753,14 @@ async function getRecommendedPosts(userId, cursor = null, limit = 10, seenPostId
       WHERE p.expires_at > NOW()
       AND ge.post_id != ALL($1::bigint[])
       ORDER BY p.created_at DESC
-      LIMIT 300
+      FETCH FIRST 30 ROWS ONLY0
     `, [excludeIds.size ? [...excludeIds] : [0]]);
 
     if (!candidates.length) return [];
 
     // 4. Get user interests and creator counts for scoring
     const { rows: interests } = await client.query(
-      'SELECT keyword FROM user_interests WHERE user_id = $1 ORDER BY score DESC LIMIT 30', [userId]
+      'SELECT keyword FROM user_interests WHERE user_id = $1 ORDER BY score DESC FETCH FIRST 30 ROWS ONLY', [userId]
     );
     const userKeywords = new Set(interests.map(r => r.keyword));
 
@@ -884,7 +884,7 @@ async function getTrendingTags(limit = 20) {
     `SELECT pt.tag, COUNT(DISTINCT pi.user_id) as engagers
      FROM post_tags pt
      JOIN post_interactions pi ON pi.post_id = pt.post_id AND pi.created_at > NOW() - INTERVAL '24 hours'
-     GROUP BY pt.tag ORDER BY engagers DESC LIMIT $1`,
+     GROUP BY pt.tag ORDER BY engagers DESC FETCH FIRST $1 ROWS ONLY`,
     [limit]
   );
   return rows;
@@ -903,7 +903,7 @@ async function getLiveComments(liveId, cursor = null, limit = 50) {
     `SELECT lc.*, u.display_name, u.avatar, u.username
      FROM live_comments lc JOIN users u ON lc.user_id = u.id
      WHERE lc.live_id = $1 ${cursor ? 'AND lc.created_at > $3' : ''}
-     ORDER BY lc.created_at ASC LIMIT $2`,
+     ORDER BY lc.created_at ASC FETCH FIRST $2 ROWS ONLY`,
     cursor ? [liveId, limit, cursor] : [liveId, limit]
   );
   return rows;
@@ -1171,7 +1171,7 @@ async function getVideos(cursor = null, limit = 10) {
     `SELECT v.*, u.display_name, u.avatar, u.username
      FROM videos v JOIN users u ON v.user_id = u.id
      WHERE $1::timestamp IS NULL OR v.created_at < $1
-     ORDER BY v.created_at DESC LIMIT $2`,
+     ORDER BY v.created_at DESC FETCH FIRST $2 ROWS ONLY`,
     [cursor, limit]
   );
   return rows;
@@ -1317,7 +1317,7 @@ async function getChannelPosts(channelId, cursor = null, limit = 20) {
     `SELECT cp.*, u.display_name, u.avatar
      FROM channel_posts cp JOIN users u ON cp.sender_id = u.id
      WHERE cp.channel_id = $1 ${cursor ? 'AND cp.created_at < $3' : ''}
-     ORDER BY cp.created_at DESC LIMIT $2`,
+     ORDER BY cp.created_at DESC FETCH FIRST $2 ROWS ONLY`,
     cursor ? [channelId, limit, cursor] : [channelId, limit]
   );
   return rows;
@@ -1407,16 +1407,22 @@ async function createProduct(sellerId, name, description, price, images = '', ca
   return rows[0];
 }
 
-async function getProducts(category = '', page = 1, limit = 20) {
-  const offset = (page - 1) * limit;
+async function getProducts(category = '', cursor = null, limit = 20) {
   let sql = `SELECT p.*, u.display_name, u.avatar FROM products p JOIN users u ON p.seller_id = u.id`;
   const params = [];
+  let idx = 1;
+  const conds = [];
   if (category) {
-    sql += ' WHERE p.category = $1';
+    conds.push(`p.category = $${idx++}`);
     params.push(category);
   }
-  sql += ' ORDER BY p.created_at DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
-  params.push(limit, offset);
+  if (cursor) {
+    conds.push(`p.created_at < $${idx++}`);
+    params.push(cursor);
+  }
+  if (conds.length) sql += ' WHERE ' + conds.join(' AND ');
+  sql += ` ORDER BY p.created_at DESC FETCH FIRST $${idx} ROWS ONLY`;
+  params.push(limit);
   const { rows } = await pool.query(sql, params);
   return rows;
 }
@@ -1496,7 +1502,7 @@ async function getMemes(cursor = null, limit = 20) {
   const { rows } = await pool.query(
     `SELECT m.*, u.display_name, u.avatar FROM memes m JOIN users u ON m.user_id = u.id
      WHERE $1::timestamp IS NULL OR m.created_at < $1
-     ORDER BY m.created_at DESC LIMIT $2`,
+     ORDER BY m.created_at DESC FETCH FIRST $2 ROWS ONLY`,
     [cursor, limit]
   );
   return rows;
@@ -1616,7 +1622,7 @@ async function endFocusSession(userId) {
 
 async function getActiveFocusSession(userId) {
   const { rows } = await pool.query(
-    'SELECT * FROM focus_sessions WHERE user_id = $1 AND active = 1 ORDER BY started_at DESC LIMIT 1',
+    'SELECT * FROM focus_sessions WHERE user_id = $1 AND active = 1 ORDER BY started_at DESC FETCH FIRST 1 ROWS ONLY',
     [userId]
   );
   return rows.length > 0 ? rows[0] : null;
@@ -1633,7 +1639,7 @@ async function addSmartNotification(userId, type, message, priority = 'normal') 
 async function getSmartNotifications(userId, cursor = null, limit = 20) {
   const { rows } = await pool.query(
     `SELECT * FROM smart_notifications WHERE user_id = $1 ${cursor ? 'AND created_at < $3' : ''}
-     ORDER BY created_at DESC LIMIT $2`,
+     ORDER BY created_at DESC FETCH FIRST $2 ROWS ONLY`,
     cursor ? [userId, limit, cursor] : [userId, limit]
   );
   return rows;
@@ -1710,7 +1716,7 @@ async function updateWatchSession(sessionId, currentTime, playing) {
 
 async function getWatchSession(chatId) {
   const { rows } = await pool.query(
-    'SELECT * FROM watch_sessions WHERE chat_id = $1 ORDER BY created_at DESC LIMIT 1',
+    'SELECT * FROM watch_sessions WHERE chat_id = $1 ORDER BY created_at DESC FETCH FIRST 1 ROWS ONLY',
     [chatId]
   );
   return rows.length > 0 ? rows[0] : null;
