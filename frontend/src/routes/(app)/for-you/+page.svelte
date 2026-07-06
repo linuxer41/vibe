@@ -162,15 +162,15 @@
       </div>
 
       <div class="fyp-actions">
-        <button class="fyp-action-btn" onclick|stopPropagation={() => toggleLike(post)}>
+        <button class="fyp-action-btn" onclick={(e) => { e.stopPropagation(); toggleLike(post); }}>
           <svg width="28" height="28" viewBox="0 0 24 24" fill={likedPosts.has(post.id) ? '#ff3040' : 'none'} stroke={likedPosts.has(post.id) ? '#ff3040' : 'white'} stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
           <span class="fyp-action-label">{post.likes_count || ''}</span>
         </button>
-        <button class="fyp-action-btn" onclick|stopPropagation={() => goPost(post)}>
+        <button class="fyp-action-btn" onclick={(e) => { e.stopPropagation(); goPost(post); }}>
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <span class="fyp-action-label">{post.comments_count || ''}</span>
         </button>
-        <button class="fyp-action-btn" onclick|stopPropagation={() => sharePost(post)}>
+        <button class="fyp-action-btn" onclick={(e) => { e.stopPropagation(); sharePost(post); }}>
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         </button>
       </div>
