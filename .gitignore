@@ -10,3 +10,5 @@ backend/uploads/
 storage-server/cache/
 frontend/.svelte-kit/
 frontend/build/
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
