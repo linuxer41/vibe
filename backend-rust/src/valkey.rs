@@ -1,5 +1,5 @@
 use socketioxide::SocketIo;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tracing::{error, info, warn};
 
@@ -34,7 +34,7 @@ fn parse_redis_url(url: &str) -> (String, u16, Option<String>) {
     (host.to_string(), port, password)
 }
 
-async fn write_resp(stream: &mut TcpStream, parts: &[&str]) -> std::io::Result<()> {
+async fn write_resp<W: AsyncWrite + Unpin>(stream: &mut W, parts: &[&str]) -> std::io::Result<()> {
     let mut buf = format!("*{}\r\n", parts.len());
     for p in parts {
         buf.push_str(&format!("${}\r\n{}\r\n", p.len(), p));
@@ -42,7 +42,7 @@ async fn write_resp(stream: &mut TcpStream, parts: &[&str]) -> std::io::Result<(
     stream.write_all(buf.as_bytes()).await
 }
 
-async fn read_resp_line(reader: &mut BufReader<&mut TcpStream>) -> std::io::Result<String> {
+async fn read_resp_line<R: AsyncRead + Unpin>(reader: &mut BufReader<R>) -> std::io::Result<String> {
     let mut line = String::new();
     reader.read_line(&mut line).await?;
     Ok(line.trim_end().to_string())
@@ -50,7 +50,7 @@ async fn read_resp_line(reader: &mut BufReader<&mut TcpStream>) -> std::io::Resu
 
 /// Read a single RESP reply, returning a debug string.
 /// Returns None when the connection is closed.
-async fn read_reply(reader: &mut BufReader<&mut TcpStream>) -> Option<String> {
+async fn read_reply<R: AsyncRead + Unpin>(reader: &mut BufReader<R>) -> Option<String> {
     let first = read_resp_line(reader).await.ok()?;
     if first.is_empty() {
         return None;
@@ -77,9 +77,22 @@ async fn read_reply(reader: &mut BufReader<&mut TcpStream>) -> Option<String> {
             let count: usize = first[1..].parse().ok()?;
             let mut parts = Vec::new();
             for _ in 0..count {
-                if let Some(p) = read_reply(reader).await {
-                    parts.push(p);
-                }
+                let line = read_resp_line(reader).await.ok()?;
+                let s = if line.is_empty() {
+                    String::new()
+                } else if line.starts_with('$') {
+                    let len: usize = line[1..].parse().unwrap_or(0);
+                    if len == 0 || len == usize::MAX {
+                        String::new()
+                    } else {
+                        let mut bulk = vec![0u8; len + 2];
+                        let _ = reader.read_exact(&mut bulk).await.ok()?;
+                        String::from_utf8_lossy(&bulk[..len]).to_string()
+                    }
+                } else {
+                    line[1..].to_string()
+                };
+                parts.push(s);
             }
             Some(parts.join(" "))
         }
