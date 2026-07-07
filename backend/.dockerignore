@@ -1,0 +1,7 @@
+.env
+.env.local
+.env.*.local
+node_modules
+tmp_upload
+tmp_chunks
+.git

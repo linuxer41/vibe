@@ -315,6 +315,13 @@ io.on('connection', (socket) => {
       };
       io.to(`chat:${chatId}`).emit('new_message', msg);
       db.trackActivity(user.id, 'messaging');
+      const membersForNotif = await db.getChatMembers(chatId);
+      for (const m of membersForNotif) {
+        if (m.id !== user.id) {
+          const notif = await db.addSmartNotification(m.id, 'new_message', `Nuevo mensaje de ${user.display_name}`);
+          io.to(`user:${m.id}`).emit('new_notification', notif);
+        }
+      }
       logger.info({ userId: user.id, chatId, msgId, msgType: type, textLength: cleanText.length, action: 'send_message' }, 'Mensaje enviado');
       cb?.(msg);
     } catch (e) { logger.error({ err: e.message, userId: user.id, chatId, action: 'send_message' }, 'Error enviando mensaje'); cb?.({ ok: false }); }
@@ -352,6 +359,23 @@ io.on('connection', (socket) => {
     try {
       const pinned = await db.togglePinChat(chatId, user.id);
       cb?.({ ok: true, pinned });
+    } catch (e) { cb?.({ ok: false }); }
+  });
+
+  socket.on('search_messages', async (data, cb) => {
+    const { chatId, query } = data || {};
+    if (!query || !chatId) { cb?.([]); return; }
+    try {
+      const msgs = await db.searchMessages(chatId, query);
+      cb?.(msgs);
+    } catch (e) { cb?.([]); }
+  });
+
+  socket.on('delete_message', async (data, cb) => {
+    const { messageId } = data || {};
+    try {
+      const ok = await db.deleteMessage(messageId, user.id);
+      cb?.({ ok });
     } catch (e) { cb?.({ ok: false }); }
   });
 
@@ -491,6 +515,10 @@ io.on('connection', (socket) => {
       const id = await db.addCall(user.id, calleeId, type, status, duration || 0);
       cb?.({ id });
       db.trackActivity(user.id, 'calls');
+      if (status === 'missed') {
+        const notif = await db.addSmartNotification(calleeId, 'missed_call', `Llamada perdida de ${user.display_name}`);
+        io.to(`user:${calleeId}`).emit('new_notification', notif);
+      }
     } catch { cb?.({ ok: false }); }
   });
 
@@ -543,6 +571,8 @@ io.on('connection', (socket) => {
         await db.endActiveCall(callId);
         io.to(`user:${call.caller_id}`).emit('call_rejected', { callId, userId: user.id });
         io.to(`call:${callId}`).emit('call_ended', { callId, reason: 'rejected' });
+        const notif = await db.addSmartNotification(call.caller_id, 'missed_call', `Llamada perdida de ${user.display_name}`);
+        io.to(`user:${call.caller_id}`).emit('new_notification', notif);
         logger.info({ userId: user.id, callId, callerId: call.caller_id, action: 'reject_call' }, 'Llamada rechazada');
       }
       cb?.({ ok: true });
@@ -913,7 +943,17 @@ io.on('connection', (socket) => {
 
   socket.on('subscribe_channel', async (data, cb) => {
     const { channelId } = data || {};
-    try { cb?.({ ok: await db.subscribeChannel(channelId, user.id) }); } catch { cb?.({ ok: false }); }
+    try {
+      const ok = await db.subscribeChannel(channelId, user.id);
+      cb?.({ ok });
+      if (ok) {
+        const channel = (await db.getChannels()).find((c) => c.id === channelId);
+        if (channel && channel.owner_id !== user.id) {
+          const notif = await db.addSmartNotification(channel.owner_id, 'channel_subscribe', `${user.display_name} se suscribió a ${channel.name}`);
+          io.to(`user:${channel.owner_id}`).emit('new_notification', notif);
+        }
+      }
+    } catch { cb?.({ ok: false }); }
   });
 
   socket.on('unsubscribe_channel', async (data, cb) => {
@@ -954,7 +994,17 @@ io.on('connection', (socket) => {
 
   socket.on('join_community', async (data, cb) => {
     const { communityId } = data || {};
-    try { cb?.({ ok: await db.joinCommunity(communityId, user.id) }); } catch { cb?.({ ok: false }); }
+    try {
+      const ok = await db.joinCommunity(communityId, user.id);
+      cb?.({ ok });
+      if (ok) {
+        const community = (await db.getCommunities(user.id)).find((c) => c.id === communityId);
+        if (community && community.owner_id !== user.id) {
+          const notif = await db.addSmartNotification(community.owner_id, 'community_join', `${user.display_name} se unió a ${community.name}`);
+          io.to(`user:${community.owner_id}`).emit('new_notification', notif);
+        }
+      }
+    } catch { cb?.({ ok: false }); }
   });
 
   socket.on('leave_community', async (data, cb) => {
@@ -1254,6 +1304,9 @@ const PORT = process.env.PORT || 3000;
 db.init().then(() => {
   server.listen(PORT, () => logger.info({ port: PORT }, 'Servidor HTTP iniciado'));
   setInterval(() => db.cleanupExpiredSessions(), 6 * 60 * 60 * 1000);
+}).catch((err) => {
+  logger.fatal({ err }, 'No se pudo iniciar el servidor');
+  process.exit(1);
 });
 
 process.on('SIGINT', () => {

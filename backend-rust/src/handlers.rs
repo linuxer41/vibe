@@ -22,6 +22,7 @@ pub struct AppState {
     pub socket_formats: RwLock<HashMap<String, WireFormat>>,
     pub socket_tokens: RwLock<HashMap<String, String>>,
     pub push: PushManager,
+    pub storage_url: String,
 }
 
 pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
@@ -407,6 +408,9 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
                                     "body": text,
                                     "chatId": chat_id,
                                 })).await;
+                                if let Ok(notif) = db::add_smart_notification(&state.db, m.id, "new_message", &format!("Nuevo mensaje de {}", user.display_name), "normal").await {
+                                    emit_to_user(&state, m.id, "new_notification", &notif).await;
+                                }
                             }
                         }
                     }
@@ -457,6 +461,48 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let _ = socket
                 .to(format!("chat:{}", chat_id))
                 .emit("stop_typing", &serde_json::json!({"chatId": chat_id, "userId": user_id}));
+        },
+    );
+
+    socket.on(
+        "search_messages",
+        async |socket: SocketRef,
+         Data(data): Data<Value>,
+         ack: AckSender| {
+            let state = get_state();
+            let chat_id = data.get("chatId").and_then(|v| v.as_i64()).unwrap_or(0);
+            let query = data.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            if query.is_empty() {
+                let _ = ack.send(&serde_json::json!([]));
+                return;
+            }
+            match db::search_messages(&state.db, chat_id, query, 50).await {
+                Ok(msgs) => {
+                    let _ = ack.send(&msgs);
+                }
+                Err(_) => {
+                    let _ = ack.send(&serde_json::json!([]));
+                }
+            }
+        },
+    );
+
+    socket.on(
+        "delete_message",
+        async |socket: SocketRef,
+         Data(data): Data<Value>,
+         ack: AckSender| {
+            let state = get_state();
+            let user_id = get_user_id(&state, &socket).await;
+            let message_id = data.get("messageId").and_then(|v| v.as_i64()).unwrap_or(0);
+            match db::delete_message(&state.db, message_id, user_id).await {
+                Ok(ok) => {
+                    let _ = ack.send(&serde_json::json!({"ok": ok}));
+                }
+                Err(_) => {
+                    let _ = ack.send(&serde_json::json!({"ok": false}));
+                }
+            }
         },
     );
 
@@ -704,6 +750,12 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             match db::add_call(&state.db, user_id, callee_id, call_type, status, duration as i32).await {
                 Ok(id) => {
                     let _ = ack.send(&serde_json::json!({"id": id}));
+                    if status == "missed" {
+                        let caller = get_user_by_id(&state, user_id).await;
+                        if let Ok(notif) = db::add_smart_notification(&state.db, callee_id, "missed_call", &format!("Llamada perdida de {}", caller.display_name), "normal").await {
+                            emit_to_user(&state, callee_id, "new_notification", &notif).await;
+                        }
+                    }
                 }
                 Err(_) => {
                     let _ = ack.send(&serde_json::json!({"id": 0}));
@@ -1457,6 +1509,18 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let user_id = get_user_id(&state, &socket).await;
             let channel_id = data.get("channelId").and_then(|v| v.as_i64()).unwrap_or(0);
             let ok = db::subscribe_channel(&state.db, user_id, channel_id).await.unwrap_or(false);
+            if ok {
+                if let Ok(channels) = db::get_channels(&state.db).await {
+                    if let Some(channel) = channels.iter().find(|c| c.id == channel_id) {
+                        if channel.owner_id != user_id {
+                            let user = get_user_by_id(&state, user_id).await;
+                            if let Ok(notif) = db::add_smart_notification(&state.db, channel.owner_id, "channel_subscribe", &format!("{} se suscribió a {}", user.display_name, channel.name), "normal").await {
+                                emit_to_user(&state, channel.owner_id, "new_notification", &notif).await;
+                            }
+                        }
+                    }
+                }
+            }
             let _ = ack.send(&serde_json::json!({"ok": ok}));
         },
     );
@@ -1601,6 +1665,18 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let user_id = get_user_id(&state, &socket).await;
             let community_id = data.get("communityId").and_then(|v| v.as_i64()).unwrap_or(0);
             let ok = db::join_community(&state.db, user_id, community_id).await.unwrap_or(false);
+            if ok {
+                if let Ok(communities) = db::get_communities(&state.db).await {
+                    if let Some(community) = communities.iter().find(|c| c.id == community_id) {
+                        if community.owner_id != user_id {
+                            let user = get_user_by_id(&state, user_id).await;
+                            if let Ok(notif) = db::add_smart_notification(&state.db, community.owner_id, "community_join", &format!("{} se unió a {}", user.display_name, community.name), "normal").await {
+                                emit_to_user(&state, community.owner_id, "new_notification", &notif).await;
+                            }
+                        }
+                    }
+                }
+            }
             let _ = ack.send(&serde_json::json!({"ok": ok}));
         },
     );
@@ -2436,6 +2512,10 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             if let Ok(Some(call)) = db::get_active_call(&state.db, call_id).await {
                 let other = if call.caller_id == user_id { call.callee_id } else { call.caller_id };
                 emit_to_user(&state, other, "call_rejected", &serde_json::json!({"callId": call_id})).await;
+                let callee = get_user_by_id(&state, user_id).await;
+                if let Ok(notif) = db::add_smart_notification(&state.db, other, "missed_call", &format!("Llamada perdida de {}", callee.display_name), "normal").await {
+                    emit_to_user(&state, other, "new_notification", &notif).await;
+                }
             }
             let _ = db::end_active_call(&state.db, call_id).await;
             let _ = ack.send(&serde_json::json!({"ok": true}));

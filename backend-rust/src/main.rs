@@ -47,6 +47,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let db_url = std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://linuxer:12345678@localhost:5432/vibe".to_string());
+    let storage_url = std::env::var("STORAGE_URL")
+        .unwrap_or_else(|_| "http://localhost:3002".to_string());
 
     let mut cfg = Config::new();
     cfg.url = Some(db_url);
@@ -70,6 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         socket_formats: RwLock::new(HashMap::new()),
         socket_tokens: RwLock::new(HashMap::new()),
         push: push_mgr,
+        storage_url: storage_url.clone(),
     });
 
     STATE.set(state.clone()).map_err(|_| "State already set")?;
@@ -104,7 +107,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             Ok(mut f) => {
                 if f.write_all(&data).await.is_ok() {
                     info!(filename = %fullname, bytes = data.len(), action = "upload", "File uploaded");
-                    Json(json!({"ok": true, "url": format!("http://localhost:3002/media/{}", fullname)}))
+                    let st = crate::STATE.get().expect("State not initialized");
+                    Json(json!({"ok": true, "url": format!("{}/media/{}", st.storage_url, fullname)}))
                 } else {
                     Json(json!({"ok": false, "error": "Write error"}))
                 }

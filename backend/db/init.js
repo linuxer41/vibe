@@ -5,15 +5,25 @@ const logger = require('../lib/logger');
 const snowflake = require('../lib/snowflake');
 const { retryQuery } = require('./pool');
 const recommend = require('../lib/recommend');
-const STORAGE_URL = 'http://localhost:3002';
+const STORAGE_URL = process.env.STORAGE_URL || 'http://localhost:3002';
 
 function generateToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
 async function init() {
-  await pool.query('SELECT 1');
-  logger.info({ component: 'db' }, 'Database connected');
+  const MAX_RETRIES = 30;
+  for (let i = 0; i < MAX_RETRIES; i++) {
+    try {
+      await pool.query('SELECT 1');
+      logger.info({ component: 'db' }, 'Database connected');
+      return;
+    } catch (err) {
+      logger.warn({ attempt: i + 1, err: err.message, action: 'db_connect' }, 'Esperando base de datos...');
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
+  throw new Error(`No se pudo conectar a la base de datos tras ${MAX_RETRIES} intentos`);
 }
 
 async function close() {
@@ -258,6 +268,25 @@ async function markRead(messageId, userId) {
       [messageId, userId]
     );
   } catch {}
+}
+
+async function searchMessages(chatId, query, limit = 50) {
+  const { rows } = await pool.query(
+    `SELECT m.*, u.display_name as sender_name, u.avatar as sender_avatar
+     FROM messages m JOIN users u ON m.sender_id = u.id
+     WHERE m.chat_id = $1 AND m.text ILIKE $2
+     ORDER BY m.created_at DESC FETCH FIRST $3 ROWS ONLY`,
+    [chatId, `%${query}%`, limit]
+  );
+  return rows.reverse();
+}
+
+async function deleteMessage(messageId, userId) {
+  const { rowCount } = await pool.query(
+    'DELETE FROM messages WHERE id = $1 AND sender_id = $2',
+    [messageId, userId]
+  );
+  return rowCount > 0;
 }
 
 // --- CALLS ---
@@ -1793,7 +1822,7 @@ module.exports = {
   sendCode, verifyCode, findOrCreateUser, createSession, getSession,
   getUserById, searchUsers, addContact, getContacts,
   createPrivateChat, getPrivateChat, createGroup, getUserChats, getChatMembers, addChatMember,
-  addMessage, getMessages, markRead,
+  addMessage, getMessages, markRead, searchMessages, deleteMessage,
   createPost, getPosts, viewPost, getPostViews, likePost, unlikePost, hasUserLikedPost, addPostComment, getPostComments,
   setOnline, setOffline, isOnline, getOnlineUsers,
   updateProfile, close,

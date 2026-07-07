@@ -57,6 +57,7 @@ services:
     environment:
       DATABASE_URL: postgres://linuxer:12345678@postgres:5432/vibe
       VALKEY_URL: redis://valkey:6379
+      STORAGE_URL: http://storage-server:3002
       PORT: "3000"
       NODE_ENV: production
     # ports:
@@ -74,6 +75,7 @@ services:
     environment:
       DATABASE_URL: postgres://linuxer:12345678@postgres:5432/vibe
       VALKEY_URL: redis://valkey:6379
+      STORAGE_URL: http://storage-server:3002
       PORT: "3001"
       RUST_LOG: info
     # ports:

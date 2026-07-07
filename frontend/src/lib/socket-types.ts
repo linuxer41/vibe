@@ -1,5 +1,5 @@
 import type { Socket } from 'socket.io-client';
-import type { User, Live, LiveComment, LiveReaction, Post, PostComment } from './types';
+import type { User, Live, LiveComment, LiveReaction, Post, PostComment, WatchSession } from './types';
 
 export interface ServerEvents {
   new_post: (post: Post) => void;
@@ -16,6 +16,8 @@ export interface ServerEvents {
   broadcast_ended: (data: { broadcastId: number }) => void;
   broadcast_removed: (data: { broadcastId: number }) => void;
   call_ended: (data: { callId: number; reason: string }) => void;
+  watch_synced: (data: { sessionId: number; playbackTime: number; isPlaying: number }) => void;
+  session_updated: (session: WatchSession) => void;
 }
 
 export interface ClientEvents {

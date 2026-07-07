@@ -354,6 +354,12 @@ export interface Game {
   max_players: number;
 }
 
+export interface GameParticipant {
+  userId: number;
+  name: string;
+  score: number;
+}
+
 export interface GameSession {
   id: number;
   game_id: number;
@@ -362,4 +368,5 @@ export interface GameSession {
   status: string;
   winner_id?: number;
   created_at: string;
+  participants?: GameParticipant[];
 }

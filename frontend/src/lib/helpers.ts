@@ -8,7 +8,13 @@ import {
 import type { User, Chat, Message, Post } from './types';
 
 const AVATAR_BASE = 'https://i.pravatar.cc/80';
-const STORAGE_URL = 'http://localhost:3002';
+function getStorageUrl(): string {
+  if (typeof localStorage !== 'undefined') {
+    const ls = localStorage.getItem('wa_storage_url');
+    if (ls && ls.startsWith('http')) return ls;
+  }
+  return import.meta.env.VITE_STORAGE_URL || 'http://localhost:3002';
+}
 function getBackendUrl(): string {
   if (typeof localStorage !== 'undefined') {
     const ls = localStorage.getItem('wa_backend');
@@ -30,12 +36,12 @@ export function mediaUrl(url: string | undefined | null, opts: { w?: number; h?:
     filename = url.split('/').pop() || url;
   else if (url.startsWith('/uploads/') || url.startsWith('uploads/'))
     filename = url.split('/').pop() || url;
-  else if (url.startsWith(STORAGE_URL))
+  else if (url.startsWith(getStorageUrl()))
     filename = url.split('/').pop() || url;
   else if (url.startsWith('http'))
     return url;
 
-  const base = `${STORAGE_URL}/media/${filename}`;
+  const base = `${getStorageUrl()}/media/${filename}`;
   const params = new URLSearchParams();
   if (opts.w) params.set('w', String(opts.w));
   if (opts.h) params.set('h', String(opts.h));
@@ -193,6 +199,10 @@ export function initSocket(sk: any) {
   });
   sk.on('focus_ended', () => {
     showToast('Sesión de enfoque finalizada');
+  });
+  sk.on('new_notification', (notification: any) => {
+    notifications.update((n: any[]) => [notification, ...n]);
+    showToast(notification.message, 'info');
   });
 
   loadChats();

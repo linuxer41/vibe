@@ -34,6 +34,7 @@
     if (path === '/live') return 'live';
     if (path === '/shop') return 'shop';
     if (path === '/games') return 'games';
+    if (path === '/watch') return 'watch';
     return 'chats';
   });
 

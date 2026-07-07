@@ -11,9 +11,27 @@ use tracing::{error, info, warn};
 pub type DbPool = Pool;
 
 pub async fn init_db(pool: &DbPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let client = pool.get().await?;
-    client.query_one("SELECT 1", &[]).await?;
-    Ok(())
+    let max_retries: u32 = 30;
+    for i in 0..max_retries {
+        match pool.get().await {
+            Ok(client) => {
+                match client.query_one("SELECT 1", &[]).await {
+                    Ok(_) => {
+                        info!(action = "db_connect", "Database connected");
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        warn!(attempt = i + 1, err = %e, action = "db_connect", "Waiting for database...");
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(attempt = i + 1, err = %e, action = "db_connect", "Waiting for database pool...");
+            }
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    }
+    Err("Failed to connect to database after 30 retries".into())
 }
 
 pub fn hash_password(password: &str) -> String {
@@ -456,6 +474,60 @@ pub async fn mark_read(
         )
         .await;
     Ok(())
+}
+
+pub async fn search_messages(
+    pool: &DbPool,
+    chat_id: i64,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<Message>, Box<dyn std::error::Error + Send + Sync>> {
+    let like = format!("%{}%", query);
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "SELECT m.*, u.display_name as sender_name, u.avatar as sender_avatar
+             FROM messages m JOIN users u ON m.sender_id = u.id
+             WHERE m.chat_id = $1 AND m.text ILIKE $2
+             ORDER BY m.created_at DESC FETCH FIRST $3 ROWS ONLY",
+            &[&chat_id, &like, &limit],
+        )
+        .await?;
+    let mut msgs: Vec<Message> = rows
+        .iter()
+        .map(|r| {
+            let created_at: chrono::NaiveDateTime = r.get("created_at");
+            Message {
+                id: r.get("id"),
+                chat_id: r.get("chat_id"),
+                sender_id: r.get("sender_id"),
+                sender_name: r.get("sender_name"),
+                sender_avatar: r.get("sender_avatar"),
+                text: r.get("text"),
+                msg_type: r.get("type"),
+                created_at: created_at.and_utc().to_rfc3339(),
+                reply_to_id: r.get("reply_to_id"),
+                forwarded: r.get("forwarded"),
+            }
+        })
+        .collect();
+    msgs.reverse();
+    Ok(msgs)
+}
+
+pub async fn delete_message(
+    pool: &DbPool,
+    message_id: i64,
+    user_id: i64,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    let rows = client
+        .execute(
+            "DELETE FROM messages WHERE id = $1 AND sender_id = $2",
+            &[&message_id, &user_id],
+        )
+        .await?;
+    Ok(rows > 0)
 }
 
 // --- CALLS ---
@@ -2683,6 +2755,31 @@ pub async fn get_focus_status(
 }
 
 // --- SMART NOTIFICATIONS ---
+
+pub async fn add_smart_notification(
+    pool: &DbPool,
+    user_id: i64,
+    notification_type: &str,
+    message: &str,
+    priority: &str,
+) -> Result<SmartNotification, Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "INSERT INTO smart_notifications (user_id, notification_type, message, priority) VALUES ($1, $2, $3, $4) RETURNING id, user_id, notification_type, message, priority, read, created_at::text",
+            &[&user_id, &notification_type.to_string(), &message.to_string(), &priority.to_string()],
+        )
+        .await?;
+    Ok(SmartNotification {
+        id: rows[0].get("id"),
+        user_id: rows[0].get("user_id"),
+        notification_type: rows[0].get("notification_type"),
+        message: rows[0].get("message"),
+        priority: Some(rows[0].get("priority")),
+        read: Some(rows[0].get("read")),
+        created_at: rows[0].get("created_at"),
+    })
+}
 
 pub async fn get_notifications(
     pool: &DbPool,

@@ -94,6 +94,20 @@ export function dismissToast(id: number) {
   toasts.update((t) => t.filter((x) => x.id !== id));
 }
 
+// Active Call (WebRTC)
+export interface ActiveCall {
+  callId: number;
+  peerId: number;
+  peerName: string;
+  type: 'audio' | 'video';
+  direction: 'incoming' | 'outgoing';
+  status: 'ringing' | 'connecting' | 'active' | 'ended';
+  startTime?: number;
+  muted: boolean;
+  speakerOn: boolean;
+}
+export const activeCall = writable<ActiveCall | null>(null);
+
 // NEW VIBE STORES
 
 // Channels
