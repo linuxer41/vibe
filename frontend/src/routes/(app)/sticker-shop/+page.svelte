@@ -75,7 +75,7 @@
   {#if activeTab === 'shop'}
     <div class="packs-list">
       {#each packs as pack (pack.id)}
-        <div class="pack-card" on:mouseenter={() => loadPackStickers(pack.id)}>
+        <div class="pack-card" onmouseenter={() => loadPackStickers(pack.id)}>
           <div class="pack-card-header">
             <div class="pack-info">
               <span class="pack-name">{pack.name}</span>

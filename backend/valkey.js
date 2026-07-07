@@ -13,28 +13,29 @@ function connect() {
     pub = new Redis(VALKEY_URL, { lazyConnect: true, retryStrategy: () => null });
     sub = new Redis(VALKEY_URL, { lazyConnect: true, retryStrategy: () => null });
 
-    pub.on('error', (err) => {
-      if (err.code === 'ECONNREFUSED' && !connected) {
-        logger.warn({ component: 'valkey' }, 'Valkey no disponible — pub/sub desactivado');
+    let pubDone = false, subDone = false;
+    function checkBoth() {
+      if (pubDone && subDone) {
+        connected = true;
+        logger.info({ component: 'valkey' }, 'Valkey connected');
       }
+    }
+
+    pub.on('error', (err) => {
+      console.log(err)
+      logger.warn({ component: 'valkey', err }, 'Valkey not available - pub disabled');
     });
     sub.on('error', (err) => {
-      if (err.code === 'ECONNREFUSED' && !connected) {
-        logger.warn({ component: 'valkey' }, 'Valkey no disponible — pub/sub desactivado');
+      if (!connected) {
+        logger.warn({ component: 'valkey', err }, 'Valkey not available - sub disabled');
       }
     });
 
-    pub.connect().then(() => {
-      connected = true;
-      logger.info({ component: 'valkey', role: 'pub' }, 'Valkey conectado (pub)');
-    }).catch(() => {});
-    
-    sub.connect().then(() => {
-      connected = true;
-      logger.info({ component: 'valkey', role: 'sub' }, 'Valkey conectado (sub)');
-    }).catch(() => {});
+    pub.connect().then(() => { pubDone = true; checkBoth(); }).catch(() => {});
+    sub.connect().then(() => { subDone = true; checkBoth(); }).catch(() => {});
   } catch (e) {
-    logger.warn({ err: e.message, component: 'valkey' }, 'Valkey no disponible — pub/sub desactivado');
+    console.log(e)
+    logger.warn({ err: e.message, component: 'valkey' }, 'Valkey not available - pub/sub disabled');
   }
 }
 
