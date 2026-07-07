@@ -94,7 +94,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     valkey::start_subscriber(
         io.clone(),
-        &["chat:messages", "posts:new", "videos:new", "lives:new", "contacts:status"],
+        &[
+            "chat:messages",
+            "posts:new",
+            "posts:interactions",
+            "stories:new",
+            "videos:new",
+            "videos:interactions",
+            "lives:new",
+            "contacts:status",
+            "calls:signaling",
+            "broadcasts:signaling",
+            "games:signaling",
+            "notifications:user",
+            "channels:updates",
+            "memes:new",
+            "polls:updates",
+            "watch:sync",
+            "global:events",
+        ],
     )?;
     info!("Valkey subscriber started");
 

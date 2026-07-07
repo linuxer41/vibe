@@ -40,10 +40,52 @@ const server = http.createServer({ maxHeaderSize: 65536 }, app);
 const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] }, maxHttpBufferSize: 1e8 });
 valkey.startSubscriber(io);
 
+function channelForEvent(event) {
+  const map = {
+    contact_added: 'contacts:status', contact_status: 'contacts:status',
+    new_chat: 'chat:messages', new_message: 'chat:messages', new_poll: 'chat:messages', new_task: 'chat:messages', watch_session_started: 'chat:messages', game_started: 'chat:messages',
+    new_post: 'posts:new', post_liked: 'posts:interactions', post_unliked: 'posts:interactions', new_post_comment: 'posts:interactions',
+    new_story: 'stories:new',
+    new_video: 'videos:new', video_liked: 'videos:interactions', new_video_comment: 'videos:interactions',
+    live_started: 'lives:new', new_live_comment: 'lives:new', new_live_reaction: 'lives:new', new_live_gift: 'lives:new',
+    incoming_call: 'calls:signaling', call_accepted: 'calls:signaling', call_rejected: 'calls:signaling', call_ended: 'calls:signaling', signal_data: 'calls:signaling',
+    new_broadcast: 'broadcasts:signaling', broadcast_ended: 'broadcasts:signaling', broadcast_removed: 'broadcasts:signaling', viewer_joined: 'broadcasts:signaling', viewer_left: 'broadcasts:signaling', broadcast_chunk: 'broadcasts:signaling', broadcast_signal: 'broadcasts:signaling',
+    player_joined: 'games:signaling', game_update: 'games:signaling', game_action: 'games:signaling',
+    new_notification: 'notifications:user', focus_started: 'notifications:user', focus_ended: 'notifications:user',
+    new_channel_post: 'channels:updates',
+    new_meme: 'memes:new',
+    poll_updated: 'polls:updates',
+    watch_sync: 'watch:sync',
+  };
+  return map[event] || 'global:events';
+}
+
 function emitRoom(channel, room, event, data) {
   if (room) io.to(room).emit(event, data);
   else io.emit(event, data);
   valkey.publish(channel, room || '', event, data).catch(() => {});
+}
+
+function emitToUser(userId, event, data) {
+  const room = `user:${userId}`;
+  io.to(room).emit(event, data);
+  valkey.publish(channelForEvent(event), room, event, data).catch(() => {});
+}
+
+function emitToRoom(room, event, data) {
+  io.to(room).emit(event, data);
+  valkey.publish(channelForEvent(event), room, event, data).catch(() => {});
+}
+
+function emitGlobal(event, data) {
+  io.emit(event, data);
+  valkey.publish(channelForEvent(event), '', event, data).catch(() => {});
+}
+
+function emitToRoomExceptSender(socket, room, event, data) {
+  socket.to(room).emit(event, data);
+  // Still publish to Valkey so other backends relay
+  valkey.publish(channelForEvent(event), room, event, data).catch(() => {});
 }
 
 // NOTA: uploads se manejan via socket (evento 'upload'), no via HTTP
@@ -221,7 +263,7 @@ io.on('connection', (socket) => {
   const contacts = db.getContacts(user.id);
   contacts.then((list) => {
     list.forEach((c) => {
-      io.to(`user:${c.id}`).emit('contact_status', { userId: user.id, online: true });
+      emitToUser(c.id, 'contact_status', { userId: user.id, online: true });
     });
   }).catch(() => {});
 
@@ -248,8 +290,8 @@ io.on('connection', (socket) => {
       cb?.({ ok });
       const contact = await db.getUserById(contactId);
       if (contact) {
-        io.to(`user:${user.id}`).emit('contact_added', contact);
-        io.to(`user:${contactId}`).emit('contact_added', user);
+        emitToUser(user.id, 'contact_added', contact);
+        emitToUser(contactId, 'contact_added', user);
         logger.info({ userId: user.id, contactId, action: 'add_contact' }, 'Contacto agregado');
       }
     } catch (e) { logger.error({ err: e.message, userId: user.id, contactId, action: 'add_contact' }, 'Error agregando contacto'); cb?.({ ok: false }); }
@@ -274,7 +316,7 @@ io.on('connection', (socket) => {
       const chatId = await db.createPrivateChat(user.id, contactId);
       const members = await db.getChatMembers(chatId);
       cb?.({ chatId, members });
-      io.to(`user:${contactId}`).emit('new_chat', { chatId, type: 'private', members });
+      emitToUser(contactId, 'new_chat', { chatId, type: 'private', members });
     } catch (e) { cb?.({ ok: false }); }
   });
 
@@ -286,7 +328,7 @@ io.on('connection', (socket) => {
       const members = await db.getChatMembers(chatId);
       cb?.({ ok: true, chatId, members });
       members.forEach((m) => {
-        if (m.id !== user.id) io.to(`user:${m.id}`).emit('new_chat', { chatId, type: 'group', members });
+        if (m.id !== user.id) emitToUser(m.id, 'new_chat', { chatId, type: 'group', members });
       });
       logger.info({ userId: user.id, chatId, groupName: name, memberCount: members.length, action: 'create_group' }, 'Grupo creado');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'create_group' }, 'Error creando grupo'); cb?.({ ok: false, error: e.message }); }
@@ -313,13 +355,13 @@ io.on('connection', (socket) => {
         text: cleanText, type: type || 'text', reply_to_id: replyToId || null, forwarded: 0,
         created_at: new Date().toISOString()
       };
-      io.to(`chat:${chatId}`).emit('new_message', msg);
+      emitToRoom(`chat:${chatId}`, 'new_message', msg);
       db.trackActivity(user.id, 'messaging');
       const membersForNotif = await db.getChatMembers(chatId);
       for (const m of membersForNotif) {
         if (m.id !== user.id) {
           const notif = await db.addSmartNotification(m.id, 'new_message', `Nuevo mensaje de ${user.display_name}`);
-          io.to(`user:${m.id}`).emit('new_notification', notif);
+          emitToUser(m.id, 'new_notification', notif);
         }
       }
       logger.info({ userId: user.id, chatId, msgId, msgType: type, textLength: cleanText.length, action: 'send_message' }, 'Mensaje enviado');
@@ -333,7 +375,7 @@ io.on('connection', (socket) => {
       const newId = await db.forwardMessage(messageId, targetChatId);
       if (newId) {
         const msg = { id: newId, chat_id: targetChatId, sender_id: 0, text: 'Mensaje reenviado', type: 'text', forwarded: 1, created_at: new Date().toISOString() };
-        io.to(`chat:${targetChatId}`).emit('new_message', msg);
+        emitToRoom(`chat:${targetChatId}`, 'new_message', msg);
         cb?.({ ok: true, id: newId });
       } else { cb?.({ ok: false }); }
     } catch (e) { cb?.({ ok: false }); }
@@ -346,12 +388,12 @@ io.on('connection', (socket) => {
 
   socket.on('typing', (data) => {
     const { chatId } = data || {};
-    socket.to(`chat:${chatId}`).emit('typing', { chatId, userId: user.id, name: user.display_name });
+    emitToRoomExceptSender(socket, `chat:${chatId}`, 'typing', { chatId, userId: user.id, name: user.display_name });
   });
 
   socket.on('stop_typing', (data) => {
     const { chatId } = data || {};
-    socket.to(`chat:${chatId}`).emit('stop_typing', { chatId, userId: user.id });
+    emitToRoomExceptSender(socket, `chat:${chatId}`, 'stop_typing', { chatId, userId: user.id });
   });
 
   socket.on('pin_chat', async (data, cb) => {
@@ -407,8 +449,7 @@ io.on('connection', (socket) => {
       const fullPost = { ...post, user_id: user.id, display_name: user.display_name, avatar: user.avatar };
       const contactsList = await db.getContacts(user.id);
       contactsList.forEach((c) => {
-        io.to(`user:${c.id}`).emit('new_post', fullPost);
-        valkey.publish('posts:new', `user:${c.id}`, 'new_post', fullPost).catch(() => {});
+        emitToUser(c.id, 'new_post', fullPost);
       });
       logger.info({ userId: user.id, postId: post.id, hasMedia: !!media, action: 'create_post' }, 'Post creado');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'create_post' }, 'Error creando post'); cb?.({ ok: false }); }
@@ -427,7 +468,7 @@ io.on('connection', (socket) => {
     try {
       const liked = await db.likePost(postId, user.id);
       cb?.({ ok: liked });
-      if (liked) emitRoom('posts:interactions', `post:${postId}`, 'post_liked', { postId, userId: user.id });
+      if (liked) emitToRoom(`post:${postId}`, 'post_liked', { postId, userId: user.id });
     } catch { cb?.({ ok: false }); }
   });
 
@@ -436,7 +477,7 @@ io.on('connection', (socket) => {
     try {
       await db.unlikePost(postId, user.id);
       cb?.({ ok: true });
-      emitRoom('posts:interactions', `post:${postId}`, 'post_unliked', { postId, userId: user.id });
+      emitToRoom(`post:${postId}`, 'post_unliked', { postId, userId: user.id });
     } catch { cb?.({ ok: false }); }
   });
 
@@ -453,7 +494,7 @@ io.on('connection', (socket) => {
       const comment = await db.addPostComment(postId, user.id, cleanText, parentId || null);
       const full = { ...comment, display_name: user.display_name, avatar: user.avatar, username: user.username };
       cb?.({ ok: true, comment: full });
-      emitRoom('posts:interactions', `post:${postId}`, 'new_post_comment', { postId, comment: full });
+      emitToRoom(`post:${postId}`, 'new_post_comment', { postId, comment: full });
       logger.info({ userId: user.id, postId, commentId: comment.id, parentId: parentId || null, action: 'add_post_comment' }, 'Comentario añadido');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'add_post_comment' }, 'Error añadiendo comentario'); cb?.({ ok: false }); }
   });
@@ -517,7 +558,7 @@ io.on('connection', (socket) => {
       db.trackActivity(user.id, 'calls');
       if (status === 'missed') {
         const notif = await db.addSmartNotification(calleeId, 'missed_call', `Llamada perdida de ${user.display_name}`);
-        io.to(`user:${calleeId}`).emit('new_notification', notif);
+        emitToUser(calleeId, 'new_notification', notif);
       }
     } catch { cb?.({ ok: false }); }
   });
@@ -533,7 +574,7 @@ io.on('connection', (socket) => {
       const call = await db.createActiveCall(user.id, calleeId, callType || 'audio');
       const calleeSocket = await db.getUserActiveCalls(calleeId);
 
-      io.to(`user:${calleeId}`).emit('incoming_call', {
+      emitToUser(calleeId, 'incoming_call', {
         callId: call.id,
         callerId: user.id,
         callerName: user.display_name,
@@ -556,7 +597,7 @@ io.on('connection', (socket) => {
       if (!call) return cb?.({ ok: false });
 
       socket.join(`call:${callId}`);
-      io.to(`call:${callId}`).emit('call_accepted', { callId, userId: user.id });
+      emitToRoom(`call:${callId}`, 'call_accepted', { callId, userId: user.id });
       logger.info({ userId: user.id, callId, action: 'accept_call' }, 'Llamada aceptada');
       cb?.({ ok: true, call });
     } catch (e) { logger.error({ err: e.message, userId: user.id, callId, action: 'accept_call' }, 'Error aceptando llamada'); cb?.({ ok: false }); }
@@ -569,10 +610,10 @@ io.on('connection', (socket) => {
       const call = await db.getActiveCall(callId);
       if (call) {
         await db.endActiveCall(callId);
-        io.to(`user:${call.caller_id}`).emit('call_rejected', { callId, userId: user.id });
-        io.to(`call:${callId}`).emit('call_ended', { callId, reason: 'rejected' });
+        emitToUser(call.caller_id, 'call_rejected', { callId, userId: user.id });
+        emitToRoom(`call:${callId}`, 'call_ended', { callId, reason: 'rejected' });
         const notif = await db.addSmartNotification(call.caller_id, 'missed_call', `Llamada perdida de ${user.display_name}`);
-        io.to(`user:${call.caller_id}`).emit('new_notification', notif);
+        emitToUser(call.caller_id, 'new_notification', notif);
         logger.info({ userId: user.id, callId, callerId: call.caller_id, action: 'reject_call' }, 'Llamada rechazada');
       }
       cb?.({ ok: true });
@@ -590,7 +631,7 @@ io.on('connection', (socket) => {
           : 0;
         await db.addCall(call.caller_id, call.callee_id, call.call_type, 'completed', duration);
         await db.endActiveCall(callId);
-        io.to(`call:${callId}`).emit('call_ended', { callId, reason: 'ended' });
+        emitToRoom(`call:${callId}`, 'call_ended', { callId, reason: 'ended' });
         socket.leave(`call:${callId}`);
         logger.info({ userId: user.id, callId, duration, action: 'end_call' }, 'Llamada finalizada');
       }
@@ -602,7 +643,7 @@ io.on('connection', (socket) => {
   socket.on('signal_data', (data) => {
     const { callId, signal } = data || {};
     if (!callId || !signal) return;
-    socket.to(`call:${callId}`).emit('signal_data', { userId: user.id, signal });
+    emitToRoomExceptSender(socket, `call:${callId}`, 'signal_data', { userId: user.id, signal });
   });
 
   // --- LIVEKIT INTEGRATION (Group Calls & Live Streaming) ---
@@ -635,7 +676,7 @@ io.on('connection', (socket) => {
     try {
       const broadcast = await db.startBroadcast(user.id, title || '');
       await socket.join(`broadcast:${broadcast.id}`);
-      io.emit('new_broadcast', broadcast);
+      emitGlobal('new_broadcast', broadcast);
       logger.info({ userId: user.id, broadcastId: broadcast.id, title, action: 'start_broadcast' }, 'Transmisión en vivo iniciada');
       cb?.({ ok: true, broadcast });
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'start_broadcast' }, 'Error iniciando transmisión'); cb?.({ ok: false }); }
@@ -647,8 +688,8 @@ io.on('connection', (socket) => {
     try {
       const broadcast = await db.stopBroadcast(broadcastId);
       socket.leave(`broadcast:${broadcastId}`);
-      io.to(`broadcast:${broadcastId}`).emit('broadcast_ended', { broadcastId });
-      io.emit('broadcast_removed', { broadcastId });
+      emitToRoom(`broadcast:${broadcastId}`, 'broadcast_ended', { broadcastId });
+      emitGlobal('broadcast_removed', { broadcastId });
       logger.info({ userId: user.id, broadcastId, action: 'stop_broadcast' }, 'Transmisión finalizada');
       cb?.({ ok: true });
     } catch (e) { logger.error({ err: e.message, userId: user.id, broadcastId, action: 'stop_broadcast' }, 'Error deteniendo transmisión'); cb?.({ ok: false }); }
@@ -669,7 +710,7 @@ io.on('connection', (socket) => {
       await db.addBroadcastViewer(broadcastId, user.id);
       socket.join(`broadcast:${broadcastId}`);
 
-      io.to(`broadcast:${broadcastId}`).emit('viewer_joined', { userId: user.id, displayName: user.display_name });
+      emitToRoom(`broadcast:${broadcastId}`, 'viewer_joined', { userId: user.id, displayName: user.display_name });
       cb?.({ ok: true, broadcast });
     } catch { cb?.({ ok: false }); }
   });
@@ -679,14 +720,14 @@ io.on('connection', (socket) => {
     const { broadcastId } = data || {};
     await db.removeBroadcastViewer(broadcastId, user.id);
     socket.leave(`broadcast:${broadcastId}`);
-    io.to(`broadcast:${broadcastId}`).emit('viewer_left', { userId: user.id });
+    emitToRoom(`broadcast:${broadcastId}`, 'viewer_left', { userId: user.id });
   });
 
   // Relay media chunks from broadcaster to viewers
   socket.on('broadcast_chunk', (data) => {
     const { broadcastId, chunk } = data || {};
     if (!broadcastId || !chunk) return;
-    socket.to(`broadcast:${broadcastId}`).emit('broadcast_chunk', { userId: user.id, chunk });
+    emitToRoomExceptSender(socket, `broadcast:${broadcastId}`, 'broadcast_chunk', { userId: user.id, chunk });
   });
 
   // WebRTC signaling for broadcast (SFU-style)
@@ -694,9 +735,9 @@ io.on('connection', (socket) => {
     const { broadcastId, signal, targetId } = data || {};
     if (!broadcastId || !signal) return;
     if (targetId) {
-      io.to(`user:${targetId}`).emit('broadcast_signal', { broadcastId, signal, userId: user.id });
+      emitToUser(targetId, 'broadcast_signal', { broadcastId, signal, userId: user.id });
     } else {
-      socket.to(`broadcast:${broadcastId}`).emit('broadcast_signal', { broadcastId, signal, userId: user.id });
+      emitToRoomExceptSender(socket, `broadcast:${broadcastId}`, 'broadcast_signal', { broadcastId, signal, userId: user.id });
     }
   });
 
@@ -794,7 +835,7 @@ io.on('connection', (socket) => {
     try {
       const video = await db.createVideo(user.id, videoUrl, thumbnail || '', caption || '');
       cb?.({ ok: true, video });
-      io.emit('new_video', { ...video, display_name: user.display_name, avatar: user.avatar, username: user.username });
+      emitGlobal('new_video', { ...video, display_name: user.display_name, avatar: user.avatar, username: user.username });
       logger.info({ userId: user.id, videoId: video.id, action: 'create_video' }, 'Video subido');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'create_video' }, 'Error subiendo video'); cb?.({ ok: false }); }
   });
@@ -809,7 +850,7 @@ io.on('connection', (socket) => {
     try {
       const liked = await db.likeVideo(videoId, user.id);
       cb?.({ ok: liked });
-      if (liked) io.emit('video_liked', { videoId, userId: user.id });
+      if (liked) emitGlobal('video_liked', { videoId, userId: user.id });
     } catch { cb?.({ ok: false }); }
   });
 
@@ -830,7 +871,7 @@ io.on('connection', (socket) => {
       const comment = await db.addVideoComment(videoId, user.id, text);
       cb?.({ ok: true, comment });
       const full = { ...comment, display_name: user.display_name, avatar: user.avatar, username: user.username };
-      io.emit('new_video_comment', { videoId, comment: full });
+      emitGlobal('new_video_comment', { videoId, comment: full });
     } catch { cb?.({ ok: false }); }
   });
 
@@ -851,7 +892,7 @@ io.on('connection', (socket) => {
     try {
       const live = await db.startLive(user.id, cleanTitle || '');
       cb?.({ ok: true, live });
-      io.emit('live_started', { ...live, display_name: user.display_name, avatar: user.avatar, username: user.username });
+      emitGlobal('live_started', { ...live, display_name: user.display_name, avatar: user.avatar, username: user.username });
       db.trackActivity(user.id, 'live');
       logger.info({ userId: user.id, liveId: live.id, title: cleanTitle, action: 'start_live' }, 'Live iniciado');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'start_live' }, 'Error iniciando live'); cb?.({ ok: false }); }
@@ -875,7 +916,7 @@ io.on('connection', (socket) => {
       cb?.({ ok: true, story });
       const contactsList = await db.getContacts(user.id);
       contactsList.forEach((c) => {
-        io.to(`user:${c.id}`).emit('new_story', story);
+        emitToUser(c.id, 'new_story', story);
       });
       logger.info({ userId: user.id, storyId: story.id, action: 'create_story' }, 'Story creada');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'create_story' }, 'Error creando story'); cb?.({ ok: false }); }
@@ -902,7 +943,7 @@ io.on('connection', (socket) => {
       const comment = await db.addLiveComment(liveId, user.id, cleanText);
       cb?.({ ok: true, comment });
       const full = { ...comment, display_name: user.display_name, avatar: user.avatar, username: user.username };
-      io.to(`live:${liveId}`).emit('new_live_comment', { liveId, comment: full });
+      emitToRoom(`live:${liveId}`, 'new_live_comment', { liveId, comment: full });
       logger.info({ userId: user.id, liveId, commentId: comment.id, action: 'add_live_comment' }, 'Comentario en live');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'add_live_comment' }, 'Error comentando live'); cb?.({ ok: false }); }
   });
@@ -920,7 +961,7 @@ io.on('connection', (socket) => {
       cb?.({ ok: true, reaction: react });
       if (react) {
         const full = { ...react, display_name: user.display_name, avatar: user.avatar, username: user.username };
-        io.to(`live:${liveId}`).emit('new_live_reaction', { liveId, reaction: full });
+        emitToRoom(`live:${liveId}`, 'new_live_reaction', { liveId, reaction: full });
       }
       logger.info({ userId: user.id, liveId, reaction, action: 'add_live_reaction' }, 'Reacción en live');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'add_live_reaction' }, 'Error reaccionando live'); cb?.({ ok: false }); }
@@ -940,7 +981,7 @@ io.on('connection', (socket) => {
       if (!gift) return cb?.({ ok: false, error: 'Estrellas insuficientes' });
       cb?.({ ok: true, gift });
       const full = { ...gift, sender_name: user.display_name, sender_avatar: user.avatar, sender_username: user.username };
-      io.to(`live:${liveId}`).emit('new_live_gift', { liveId, gift: full });
+      emitToRoom(`live:${liveId}`, 'new_live_gift', { liveId, gift: full });
       logger.info({ userId: user.id, liveId, recipientId, stars, action: 'send_live_gift' }, 'Estrella enviada en live');
     } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'send_live_gift' }, 'Error enviando estrella'); cb?.({ ok: false }); }
   });
@@ -977,7 +1018,7 @@ io.on('connection', (socket) => {
         const channel = (await db.getChannels()).find((c) => c.id === channelId);
         if (channel && channel.owner_id !== user.id) {
           const notif = await db.addSmartNotification(channel.owner_id, 'channel_subscribe', `${user.display_name} se suscribió a ${channel.name}`);
-          io.to(`user:${channel.owner_id}`).emit('new_notification', notif);
+          emitToUser(channel.owner_id, 'new_notification', notif);
         }
       }
     } catch { cb?.({ ok: false }); }
@@ -995,7 +1036,7 @@ io.on('connection', (socket) => {
       cb?.({ ok: true, post });
       const subscribers = await db.getChannelSubscribers?.(channelId) || [];
       subscribers.forEach((s) => {
-        io.to(`user:${s.id}`).emit('new_channel_post', { ...post, channel_id: channelId, display_name: user.display_name, avatar: user.avatar });
+        emitToUser(s.id, 'new_channel_post', { ...post, channel_id: channelId, display_name: user.display_name, avatar: user.avatar });
       });
     } catch { cb?.({ ok: false }); }
   });
@@ -1028,7 +1069,7 @@ io.on('connection', (socket) => {
         const community = (await db.getCommunities(user.id)).find((c) => c.id === communityId);
         if (community && community.owner_id !== user.id) {
           const notif = await db.addSmartNotification(community.owner_id, 'community_join', `${user.display_name} se unió a ${community.name}`);
-          io.to(`user:${community.owner_id}`).emit('new_notification', notif);
+          emitToUser(community.owner_id, 'new_notification', notif);
         }
       }
     } catch { cb?.({ ok: false }); }
@@ -1047,7 +1088,7 @@ io.on('connection', (socket) => {
       const pollId = await db.createPoll(chatId, user.id, question, options, multipleChoice);
       const poll = await db.getPoll(pollId);
       cb?.({ ok: true, poll });
-      io.to(`chat:${chatId}`).emit('new_poll', poll);
+      emitToRoom(`chat:${chatId}`, 'new_poll', poll);
     } catch { cb?.({ ok: false }); }
   });
 
@@ -1061,7 +1102,7 @@ io.on('connection', (socket) => {
     try {
       const ok = await db.votePoll(pollId, optionId, user.id);
       cb?.({ ok });
-      if (ok) io.emit('poll_updated', { pollId, optionId, userId: user.id });
+      if (ok) emitGlobal('poll_updated', { pollId, optionId, userId: user.id });
     } catch { cb?.({ ok: false }); }
   });
 
@@ -1124,7 +1165,7 @@ io.on('connection', (socket) => {
     try {
       const meme = await db.createMeme(user.id, imageUrl, caption || '', template || '');
       cb?.({ ok: true, meme });
-      io.emit('new_meme', { ...meme, display_name: user.display_name, avatar: user.avatar });
+      emitGlobal('new_meme', { ...meme, display_name: user.display_name, avatar: user.avatar });
     } catch { cb?.({ ok: false }); }
   });
 
@@ -1177,7 +1218,7 @@ io.on('connection', (socket) => {
     try {
       const fs = await db.startFocusSession(user.id, mode || 'focus');
       cb?.({ ok: true, session: fs });
-      io.to(`user:${user.id}`).emit('focus_started', fs);
+      emitToUser(user.id, 'focus_started', fs);
     } catch { cb?.({ ok: false }); }
   });
 
@@ -1185,7 +1226,7 @@ io.on('connection', (socket) => {
     try {
       const fs = await db.endFocusSession(user.id);
       cb?.({ ok: true, session: fs });
-      io.to(`user:${user.id}`).emit('focus_ended', fs);
+      emitToUser(user.id, 'focus_ended', fs);
     } catch { cb?.({ ok: false }); }
   });
 
@@ -1224,7 +1265,7 @@ io.on('connection', (socket) => {
     try {
       const task = await db.createTask(chatId, title, user.id, assignedTo || null, dueDate || null);
       cb?.({ ok: true, task });
-      io.to(`chat:${chatId}`).emit('new_task', task);
+      emitToRoom(`chat:${chatId}`, 'new_task', task);
     } catch { cb?.({ ok: false }); }
   });
 
@@ -1244,14 +1285,14 @@ io.on('connection', (socket) => {
     try {
       const ws = await db.createWatchSession(chatId, user.id, videoUrl);
       cb?.({ ok: true, session: ws });
-      io.to(`chat:${chatId}`).emit('watch_session_started', ws);
+      emitToRoom(`chat:${chatId}`, 'watch_session_started', ws);
     } catch { cb?.({ ok: false }); }
   });
 
   socket.on('sync_watch', (data) => {
     const { sessionId, currentTime, playing } = data || {};
     db.updateWatchSession(sessionId, currentTime, playing);
-    socket.broadcast.emit('watch_sync', { sessionId, currentTime, playing });
+    emitGlobal('watch_sync', { sessionId, currentTime, playing });
   });
 
   socket.on('get_watch_session', async (data, cb) => {
@@ -1271,7 +1312,7 @@ io.on('connection', (socket) => {
       await db.joinGameSession(session.id, user.id);
       db.trackActivity(user.id, 'games');
       cb?.({ ok: true, session });
-      io.to(`chat:${chatId}`).emit('game_started', session);
+      emitToRoom(`chat:${chatId}`, 'game_started', session);
     } catch { cb?.({ ok: false }); }
   });
 
@@ -1280,14 +1321,14 @@ io.on('connection', (socket) => {
     try {
       const ok = await db.joinGameSession(sessionId, user.id);
       cb?.({ ok, sessionId });
-      socket.to(`game:${sessionId}`).emit('player_joined', { userId: user.id, name: user.display_name });
+      emitToRoomExceptSender(socket, `game:${sessionId}`, 'player_joined', { userId: user.id, name: user.display_name });
       socket.join(`game:${sessionId}`);
     } catch { cb?.({ ok: false }); }
   });
 
   socket.on('game_action', (d) => {
     const { sessionId, action, data } = d || {};
-    socket.to(`game:${sessionId}`).emit('game_update', { userId: user.id, action, data });
+    emitToRoomExceptSender(socket, `game:${sessionId}`, 'game_update', { userId: user.id, action, data });
   });
 
   // --- ROOMS ---
@@ -1304,7 +1345,7 @@ io.on('connection', (socket) => {
     const activeCalls = await db.getUserActiveCalls(user.id).catch(() => []);
     for (const call of activeCalls) {
       await db.endActiveCall(call.id).catch(() => {});
-      io.to(`call:${call.id}`).emit('call_ended', { callId: call.id, reason: 'disconnected' });
+      emitToRoom(`call:${call.id}`, 'call_ended', { callId: call.id, reason: 'disconnected' });
     }
     // End active broadcasts
     try {
@@ -1312,15 +1353,15 @@ io.on('connection', (socket) => {
       for (const b of broadcasts) {
         if (b.user_id === user.id) {
           await db.stopBroadcast(b.id);
-          io.to(`broadcast:${b.id}`).emit('broadcast_ended', { broadcastId: b.id });
-          io.emit('broadcast_removed', { broadcastId: b.id });
+          emitToRoom(`broadcast:${b.id}`, 'broadcast_ended', { broadcastId: b.id });
+          emitGlobal('broadcast_removed', { broadcastId: b.id });
         }
       }
     } catch {}
     // Notify contacts
     contacts.then((list) => {
       list.forEach((c) => {
-        io.to(`user:${c.id}`).emit('contact_status', { userId: user.id, online: false });
+        emitToUser(c.id, 'contact_status', { userId: user.id, online: false });
       });
     }).catch(() => {});
   });

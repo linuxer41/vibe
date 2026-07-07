@@ -41,7 +41,14 @@ function connect() {
 
 function startSubscriber(io) {
   if (!sub) { connect(); }
-  const channels = ['chat:messages', 'posts:new', 'posts:interactions', 'videos:new', 'lives:new', 'contacts:status'];
+  const channels = [
+    'chat:messages', 'posts:new', 'posts:interactions',
+    'stories:new', 'videos:new', 'videos:interactions',
+    'lives:new', 'contacts:status', 'calls:signaling',
+    'broadcasts:signaling', 'games:signaling', 'notifications:user',
+    'channels:updates', 'memes:new', 'polls:updates',
+    'watch:sync', 'global:events',
+  ];
 
   sub.on('message', (channel, message) => {
     try {

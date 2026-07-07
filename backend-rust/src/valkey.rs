@@ -1,3 +1,4 @@
+use serde_json::Value;
 use socketioxide::SocketIo;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncBufReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -156,6 +157,31 @@ async fn subscribe_and_listen(
                 return Err("Valkey connection closed".into());
             }
         }
+    }
+}
+
+/// Publish a message to a Valkey channel (opening a temporary connection).
+/// Uses JSON format for simplicity.
+pub async fn publish(channel: &str, target: Option<&str>, event: &str, data: &Value) {
+    let url = get_valkey_url();
+    let (host, port, password) = parse_redis_url(&url);
+    let addr = format!("{host}:{port}");
+
+    if let Ok(mut stream) = TcpStream::connect(&addr).await {
+        stream.set_nodelay(true).ok();
+        let (reader, mut writer) = stream.split();
+        let mut reader = BufReader::new(reader);
+
+        if let Some(pass) = &password {
+            if write_resp(&mut writer, &["AUTH", pass]).await.is_ok() {
+                let _ = read_reply(&mut reader).await;
+            }
+        }
+
+        let payload = format::encode_valkey(channel, target, event, data, &format::WireFormat::Json);
+        // SAFETY: JSON encoding produces valid UTF-8
+        let payload_str = unsafe { String::from_utf8_unchecked(payload) };
+        let _ = write_resp(&mut writer, &["PUBLISH", channel, &payload_str]).await;
     }
 }
 

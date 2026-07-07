@@ -14,7 +14,9 @@ let tauriReady = false;
 async function ensureTauri() {
   if (tauriReady) return true;
   try {
+    if (typeof window === 'undefined' || !('__TAURI__' in window)) return false;
     const mod = await import('@tauri-apps/plugin-notification');
+    if (!mod || !mod.isPermissionGranted) return false;
     tauriGranted = await mod.isPermissionGranted();
     tauriReady = true;
     return true;

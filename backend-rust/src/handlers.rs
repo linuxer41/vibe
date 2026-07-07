@@ -12,6 +12,7 @@ use crate::db;
 use crate::format::WireFormat;
 use crate::push::PushManager;
 use crate::types::*;
+use crate::valkey;
 
 pub struct AppState {
     pub db: deadpool_postgres::Pool,
@@ -1245,7 +1246,7 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
                     let _ = ack.send(&serde_json::json!({"ok": true, "story": story}));
                     if let Ok(contacts) = db::get_contacts(&state.db, user_id).await {
                         for c in contacts {
-                            let _ = state.io.to(format!("user:{}", c.id)).emit("new_story", &story);
+                            emit_to_user(&state, c.id, "new_story", &story).await;
                         }
                     }
                     info!(user_id, story_id = story.id, action = "create_story", "Story created");
@@ -2657,7 +2658,8 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let user_id = get_user_id(&state, &socket).await;
             let broadcast_id = data.get("broadcastId").and_then(|v| v.as_i64()).unwrap_or(0);
             let _ = db::stop_broadcast(&state.db, broadcast_id, user_id).await;
-            let _ = state.io.to(format!("broadcast:{}", broadcast_id)).emit("broadcast_ended", &serde_json::json!({"broadcastId": broadcast_id})).await;
+            let ended = serde_json::json!({"broadcastId": broadcast_id});
+            emit_to_room(&state, &format!("broadcast:{}", broadcast_id), "broadcast_ended", &ended).await;
             socket.leave(format!("broadcast:{}", broadcast_id));
             let _ = ack.send(&serde_json::json!({"ok": true}));
         },
@@ -2719,7 +2721,8 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let state = get_state();
             let broadcast_id = data.get("broadcastId").and_then(|v| v.as_i64()).unwrap_or(0);
             let chunk = data.get("chunk");
-            let _ = state.io.to(format!("broadcast:{}", broadcast_id)).emit("broadcast_chunk", &serde_json::json!({"chunk": chunk})).await;
+            let chunk_json = serde_json::json!({"chunk": chunk});
+            emit_to_room(&state, &format!("broadcast:{}", broadcast_id), "broadcast_chunk", &chunk_json).await;
             let _ = ack.send(&serde_json::json!({"ok": true}));
         },
     );
@@ -2733,7 +2736,8 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let broadcast_id = data.get("broadcastId").and_then(|v| v.as_i64()).unwrap_or(0);
             let signal = data.get("signal");
             let user_id = get_user_id(&state, &socket).await;
-            let _ = state.io.to(format!("broadcast:{}", broadcast_id)).emit("broadcast_signal", &serde_json::json!({"userId": user_id, "signal": signal})).await;
+            let sig = serde_json::json!({"userId": user_id, "signal": signal});
+            emit_to_room(&state, &format!("broadcast:{}", broadcast_id), "broadcast_signal", &sig).await;
             let _ = ack.send(&serde_json::json!({"ok": true}));
         },
     );
@@ -2776,7 +2780,8 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let user_id = get_user_id(&state, &socket).await;
             let session_id = data.get("sessionId").and_then(|v| v.as_i64()).unwrap_or(0);
             let _ = db::join_game_session(&state.db, session_id, user_id).await;
-            let _ = state.io.to(format!("game:{}", session_id)).emit("player_joined", &serde_json::json!({"userId": user_id})).await;
+            let joined = serde_json::json!({"userId": user_id});
+            emit_to_room(&state, &format!("game:{}", session_id), "player_joined", &joined).await;
             let _ = ack.send(&serde_json::json!({"ok": true}));
         },
     );
@@ -2791,9 +2796,8 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
             let session_id = data.get("sessionId").and_then(|v| v.as_i64()).unwrap_or(0);
             let action = data.get("action").and_then(|v| v.as_str()).unwrap_or("");
             let game_data = data.get("data");
-            let _ = state.io.to(format!("game:{}", session_id)).emit("game_action", &serde_json::json!({
-                "userId": user_id, "action": action, "data": game_data
-            })).await;
+            let action_json = serde_json::json!({"userId": user_id, "action": action, "data": game_data});
+            emit_to_room(&state, &format!("game:{}", session_id), "game_action", &action_json).await;
             let _ = ack.send(&serde_json::json!({"ok": true}));
         },
     );
@@ -2927,7 +2931,7 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
                 for call in calls {
                     let _ = db::end_active_call(&state.db, call.id).await;
                     let other = if call.caller_id == uid { call.callee_id } else { call.caller_id };
-                    let _ = state.io.to(format!("user:{}", other)).emit("call_ended", &serde_json::json!({"callId": call.id})).await;
+                    emit_to_user(&state, other, "call_ended", &serde_json::json!({"callId": call.id})).await;
                 }
             }
             // End active broadcasts
@@ -2981,16 +2985,52 @@ async fn get_user_by_id(state: &AppState, user_id: i64) -> User {
         })
 }
 
+/// Map event names to Valkey channels for cross-backend pub/sub.
+fn valkey_channel_for_event(event: &str) -> &'static str {
+    match event {
+        "contact_added" | "contact_status" => "contacts:status",
+        "new_chat" | "new_message" | "new_poll" | "new_task" | "watch_session_started" | "game_started" => "chat:messages",
+        "new_post" | "post_liked" | "post_unliked" | "new_post_comment" => "posts:new",
+        "new_story" => "stories:new",
+        "new_video" | "video_liked" | "new_video_comment" => "videos:new",
+        "live_started" | "new_live_comment" | "new_live_reaction" | "new_live_gift" => "lives:new",
+        "incoming_call" | "call_accepted" | "call_rejected" | "call_ended" | "signal_data" => "calls:signaling",
+        "new_broadcast" | "broadcast_ended" | "broadcast_removed" | "viewer_joined" | "viewer_left" | "broadcast_chunk" | "broadcast_signal" | "broadcast_viewer_joined" | "broadcast_viewer_left" => "broadcasts:signaling",
+        "player_joined" | "game_update" | "game_action" => "games:signaling",
+        "new_notification" | "focus_started" | "focus_ended" => "notifications:user",
+        "new_channel_post" => "channels:updates",
+        "new_meme" => "memes:new",
+        "poll_updated" => "polls:updates",
+        "watch_sync" => "watch:sync",
+        _ => "global:events",
+    }
+}
+
 async fn track_activity(state: &AppState, user_id: i64, section: &str) {
     let _ = db::update_vibe_balance(&state.db, user_id, section, 1).await;
 }
 
+/// Emit to a specific user room AND publish to Valkey for cross-backend relay.
 async fn emit_to_user(state: &AppState, user_id: i64, event: &str, data: &impl serde::Serialize) {
-    let _ = state
-        .io
-        .to(format!("user:{}", user_id))
-        .emit(event, data)
-        .await;
+    let room = format!("user:{}", user_id);
+    let value: Value = serde_json::to_value(data).unwrap_or(Value::Null);
+    let _ = state.io.to(room.clone()).emit(event, &value).await;
+    let channel = valkey_channel_for_event(event);
+    valkey::publish(channel, Some(&room), event, &value).await;
+}
+
+/// Emit to any room AND publish to Valkey.
+async fn emit_to_room(state: &AppState, room: &str, event: &str, data: &Value) {
+    let _ = state.io.to(room.to_string()).emit(event, data).await;
+    let channel = valkey_channel_for_event(event);
+    valkey::publish(channel, Some(room), event, data).await;
+}
+
+/// Emit globally AND publish to Valkey.
+async fn emit_global(state: &AppState, event: &str, data: &Value) {
+    let _ = state.io.emit(event, data).await;
+    let channel = valkey_channel_for_event(event);
+    valkey::publish(channel, None, event, data).await;
 }
 
 #[allow(dead_code)]
