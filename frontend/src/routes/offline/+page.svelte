@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/icon/Icon.svelte';
   import { onMount } from 'svelte';
 
   let online = $state(true);
@@ -22,14 +23,9 @@
 <div class="offline-page">
   <div class="offline-icon">
     {#if online}
-      <svg viewBox="0 0 24 24" width="80" height="80" fill="none" stroke="var(--accent)" stroke-width="1.5">
-        <path d="M22 12A10 10 0 0 0 12 2M2 12a10 10 0 0 0 10 10M12 6v6l4 2"/>
-      </svg>
+      <Icon name="clock" size={80} strokeWidth={1.5} style="color: var(--accent)" />
     {:else}
-      <svg viewBox="0 0 24 24" width="80" height="80" fill="none" stroke="var(--accent)" stroke-width="1.5">
-        <circle cx="12" cy="12" r="10"/>
-        <path d="M16 16s-1.5-2-4-2-4 2-4 2M9 9h.01M15 9h.01"/>
-      </svg>
+      <Icon name="emoji" size={80} strokeWidth={1.5} style="color: var(--accent)" />
     {/if}
   </div>
   <h1>{online ? 'De vuelta en línea' : 'Sin conexión'}</h1>

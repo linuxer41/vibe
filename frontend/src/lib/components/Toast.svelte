@@ -1,5 +1,6 @@
 <script lang="ts">
   import { toasts, dismissToast, type ToastItem, type ToastType } from '$lib/stores';
+  import Icon from '$lib/icon/Icon.svelte';
 
   let items: ToastItem[] = $state([]);
   let unsub = toasts.subscribe((t) => items = t);
@@ -10,16 +11,16 @@
     <div class="toast" class:toast-success={item.type === 'success'} class:toast-error={item.type === 'error'} class:toast-info={item.type === 'info'}>
       <div class="toast-icon">
         {#if item.type === 'success'}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <Icon name="check" size={18} strokeWidth={2.5} />
         {:else if item.type === 'error'}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+          <Icon name="x" size={18} strokeWidth={2.5} />
         {:else}
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+          <Icon name="info" size={18} strokeWidth={2.5} />
         {/if}
       </div>
       <span class="toast-msg">{item.message}</span>
       <button class="toast-dismiss" onclick={() => dismissToast(item.id)}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        <Icon name="x" size={14} />
       </button>
     </div>
   {/each}

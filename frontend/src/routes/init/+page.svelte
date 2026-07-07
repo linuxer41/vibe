@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/icon/Icon.svelte';
   import { get } from 'svelte/store';
   import { createSocket } from '$lib/socket';
   import {
@@ -57,20 +58,23 @@
     )
   );
 
+  const fullPhone = $derived(`${selectedCountry.dial}${$phone}`);
+
   function sendCode() {
     const ph = get(phone);
-    if (ph.length < 10) { authError.set('Teléfono inválido'); return; }
+    if (ph.length < selectedCountry.length) { authError.set(`Teléfono inválido — debe tener ${selectedCountry.length} dígitos`); return; }
     if (sendingCode) return;
     authError.set('');
     sendingCode = true;
     const s = createSocket();
     s.connect();
-    s.emit('send_code', { phone: `${selectedCountry.dial}${ph}` }, (res: any) => {
+    s.emit('send_code', { phone: fullPhone }, (res: any) => {
       sendingCode = false;
       if (res.ok) {
         authStep.set('verify');
         sk = s;
         socket.set(s);
+        if (res.code) code.set(String(res.code));
         authError.set(`Código: ${res.code}`);
       } else {
         authError.set(res.error);
@@ -164,14 +168,14 @@
   <div class="init-body">
     <div class="top-actions">
       <button class="top-btn backend-toggle" onclick={() => showBackendSelector = true} title="Servidor backend">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><path d="M6 6h.01M6 18h.01"/></svg>
+        <Icon name="settings" size={16} style="color: var(--text-2)" />
         <span class="backend-label">{backendLabel}</span>
       </button>
       <button class="top-btn theme-toggle" onclick={toggleTheme} title={$theme === 'dark' ? 'Modo claro' : 'Modo oscuro'}>
         {#if $theme === 'dark'}
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+          <Icon name="sun" size={22} style="color: var(--text-2)" />
         {:else}
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-2)" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <Icon name="moon" size={22} style="color: var(--text-2)" />
         {/if}
       </button>
     </div>
@@ -193,23 +197,22 @@
           <button class="country-selector" onclick={() => showCountrySheet = true}>
             <span class="cs-flag">{selectedCountry.flag}</span>
             <span class="cs-code">+{selectedCountry.dial}</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2.5" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+            <Icon name="chevron-down" size={12} strokeWidth={2.5} style="color: var(--text-3)" />
           </button>
-          <input type="tel" bind:value={$phone} placeholder="54 11 1234 5678" onkeydown={(e) => e.key === 'Enter' && sendCode()} />
+          <input type="tel" bind:value={$phone} placeholder={'•'.repeat(selectedCountry.length)} maxlength={selectedCountry.length} onkeydown={(e) => e.key === 'Enter' && sendCode()} />
         </div>
         <button class="init-btn" onclick={sendCode} disabled={sendingCode}>
           {#if sendingCode}
             <span class="init-spinner"></span>
           {:else}
             Continuar
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           {/if}
         </button>
       </div>
 
     {:else if $authStep === 'verify'}
       <div class="init-form">
-        <p class="init-subtitle">Código enviado a <strong>{$phone}</strong></p>
+        <p class="init-subtitle">Código enviado a <strong>+{selectedCountry.dial} {$phone}</strong></p>
         <div class="code-input-wrap">
           <input type="text" bind:value={$code} placeholder="Código de 6 dígitos" maxlength="6" class="code-input" onkeydown={(e) => e.key === 'Enter' && verifyCode()} />
         </div>
@@ -218,7 +221,6 @@
             <span class="init-spinner"></span>
           {:else}
             Verificar
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           {/if}
         </button>
         <button class="init-link" onclick={() => authStep.set('phone')}>Cambiar número</button>
@@ -235,22 +237,18 @@
             <div class="setup-avatar-letter" style="display:none">{($setupName || 'U').charAt(0).toUpperCase()}</div>
           {/if}
           <div class="setup-camera-icon">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <Icon name="camera" size={18} />
           </div>
         </div>
+        <p class="setup-username-text">@{$setupUser}</p>
         <input type="file" id="setup-avatar-input" accept="image/*;capture=camera" class="file-input" onchange={handleAvatarSelect} />
         <input type="text" bind:value={$setupName} placeholder="Tu nombre" maxlength="30" class="init-input" />
-        <div class="setup-username-readonly">
-          <span class="su-label">@</span>
-          <span class="su-value">{$setupUser}</span>
-        </div>
-        <textarea bind:value={$setupBio} placeholder="Opcional" rows={2} maxlength="100" class="init-input"></textarea>
+        <textarea bind:value={$setupBio} placeholder="Mi bio (opcional)" rows={2} maxlength="100" class="init-input"></textarea>
         <button class="init-btn" onclick={saveSetup} disabled={savingSetup}>
           {#if savingSetup}
             <span class="init-spinner"></span>
           {:else}
             Finalizar
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
           {/if}
         </button>
       </div>
@@ -273,7 +271,7 @@
 <BottomSheet show={showCountrySheet} onclose={() => { showCountrySheet = false; countrySearch = ''; }}>
   {#snippet header()}
     <div class="sheet-search">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <Icon name="search" size={16} style="color: var(--text-3)" />
       <input type="text" bind:value={countrySearch} placeholder="Buscar país..." class="sheet-search-input" />
     </div>
   {/snippet}
@@ -462,12 +460,9 @@
   .ci-name { flex: 1; font-size: 15px; color: var(--text); font-weight: 500; }
   .ci-dial { font-size: 14px; color: var(--text-3); }
   .file-input { display: none; }
-  .setup-username-readonly {
-    display: flex; align-items: center; gap: 4px;
-    width: 100%; padding: 14px 16px; margin-bottom: 14px;
-    border: 2px solid rgba(255,255,255,0.08); border-radius: 12px;
-    background: var(--bg-3); text-align: center; justify-content: center;
+  .setup-username-text {
+    text-align: center; font-size: 14px; color: var(--text-3);
+    margin: -18px 0 24px; font-weight: 500;
   }
-  .su-label { font-size: 16px; color: var(--text-3); font-weight: 500; }
-  .su-value { font-size: 16px; color: var(--text-2); font-weight: 500; }
+
 </style>

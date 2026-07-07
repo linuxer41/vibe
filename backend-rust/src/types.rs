@@ -212,6 +212,42 @@ pub struct Live {
     pub username: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Story {
+    pub id: i64,
+    pub user_id: i64,
+    pub media_url: String,
+    pub created_at: String,
+    pub expires_at: String,
+    pub views_count: i64,
+    pub display_name: Option<String>,
+    pub avatar: Option<String>,
+    pub username: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryGroup {
+    pub user: StoryUser,
+    pub stories: Vec<StoryItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryUser {
+    pub id: i64,
+    pub display_name: String,
+    pub avatar: String,
+    pub username: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryItem {
+    pub id: i64,
+    pub media_url: String,
+    pub created_at: String,
+    pub expires_at: String,
+    pub views_count: i64,
+}
+
 // Socket event payloads
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SendCodePayload {

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { avatarUrl } from '$lib/helpers';
   import type { Channel, Community } from '$lib/types';
+  import Icon from '$lib/icon/Icon.svelte';
 
   let { item, type, subscribed, onaction }: {
     item: Channel | Community;
@@ -32,7 +33,7 @@
     </span>
   </div>
   <span class="cc-arrow">
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+    <Icon name="chevron-right" size={16} style="color: var(--text-3)" />
   </span>
 </div>
 

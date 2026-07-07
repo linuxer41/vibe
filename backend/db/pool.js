@@ -40,4 +40,7 @@ async function retryQuery(queryFn, maxRetries = 3) {
   }
 }
 
+// Keep DB connection alive — ping every 30s
+setInterval(() => { healthcheck().catch(() => {}); }, 30000);
+
 module.exports = { pool, healthcheck, retryQuery };

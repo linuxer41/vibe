@@ -18,19 +18,31 @@
 |---|---|
 | `/` | Chats (inbox) |
 | `/chat?id=X` | Chat individual/grupo |
-| `/contact` | Contactos |
-| `/feed` | Feed de posts (Todo/Contactos/Míos) |
-| `/post/new` | Crear post (cámara, galería, texto) |
+| `/contact?id=X` | Detalle de contacto |
+| `/contacts` | Lista de contactos |
+| `/feed` | Feed de posts (Para ti/Siguiendo/Míos) |
+| `/post/new` | Crear post (solo texto, la cámara navega a /camera) |
+| `/camera` | Cámara full-screen con filtros, grabación, Post/Story publish |
 | `/live` | Lives activos + iniciar live |
 | `/calls` | Llamadas recientes |
 | `/shop` | Tienda Vibe |
 | `/games` | Juegos |
-| `/camera` | Cámara para posts (legacy) |
+| `/channels` | Canales |
+| `/watch` | Watch Together |
+| `/notes` | Notas compartidas |
+| `/tasks` | Tareas |
+| `/sticker-shop` | Tienda de stickers |
+| `/for-you` | For You Page |
 | `/profile` | Perfil |
 | `/settings` | Ajustes |
 | `/init` | Setup inicial |
 | `/privacy-policy` | Política privacidad |
 | `/terms` | Términos |
+
+## Layout
+
+- **Root layout** (`routes/+layout.svelte`): auth, socket, theme, passcode lock, Toast + app chrome (header, bottom nav, FAB, modals) when authenticated
+- No route groups — todas las rutas viven directamente en `routes/`
 
 ---
 

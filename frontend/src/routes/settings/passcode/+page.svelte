@@ -6,6 +6,7 @@
   import SettingRow from '$lib/components/SettingRow.svelte';
   import Toggle from '$lib/components/Toggle.svelte';
   import { passcodeSettings } from '$lib/stores';
+  import Icon from '$lib/icon/Icon.svelte';
 
   let ps = $state({ enabled: false, passcodeHash: '', timeout: 1 });
   passcodeSettings.subscribe((v) => ps = v);
@@ -77,12 +78,12 @@
   <div class="content">
     {#if ps.enabled || step === 'enabled'}
       <div class="status-badge active">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <Icon name="check" size={18} strokeWidth={2.5} />
         Activado
       </div>
     {:else if step === 'disabled'}
       <div class="status-badge">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        <Icon name="x" size={18} />
         Desactivado
       </div>
     {/if}
@@ -91,7 +92,7 @@
       <SettingSection>
         <SettingRow label="Bloqueo con PIN" desc={ps.enabled ? 'Usar PIN para desbloquear la app' : 'Protege la app con un PIN'}>
           {#snippet icon()}
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            <Icon name="lock" size={20} style="color: var(--accent)" />
           {/snippet}
           {#if !ps.enabled}
             <Toggle checked={false} onchange={startSetup} />
@@ -107,7 +108,7 @@
             <div class="option" class:selected={ps.timeout === opt.value} onclick={() => updateTimeout(opt.value)}>
               <span>{opt.label}</span>
               {#if ps.timeout === opt.value}
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                <Icon name="check" size={18} style="color: var(--accent)" strokeWidth={3} />
               {/if}
             </div>
           {/each}
@@ -131,11 +132,11 @@
             <button class="numpad-key" onclick={() => { if (pin1.length < 6) pin1 += n; }}>{n}</button>
           {/each}
           <button class="numpad-key" onclick={() => { if (pin1.length > 0) pin1 = pin1.slice(0, -1); }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            <Icon name="chevron-left" size={22} />
           </button>
           <button class="numpad-key" onclick={() => { if (pin1.length < 6) pin1 += '0'; }}>0</button>
           <button class="numpad-key" onclick={confirmPin}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <Icon name="check" size={22} style="color: var(--accent)" strokeWidth={3} />
           </button>
         </div>
       </SettingSection>
@@ -152,11 +153,11 @@
             <button class="numpad-key" onclick={() => { if (pin2.length < 6) pin2 += n; }}>{n}</button>
           {/each}
           <button class="numpad-key" onclick={() => { if (pin2.length > 0) pin2 = pin2.slice(0, -1); }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+            <Icon name="chevron-left" size={22} />
           </button>
           <button class="numpad-key" onclick={() => { if (pin2.length < 6) pin2 += '0'; }}>0</button>
           <button class="numpad-key" onclick={savePin}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <Icon name="check" size={22} style="color: var(--accent)" strokeWidth={3} />
           </button>
         </div>
       </SettingSection>

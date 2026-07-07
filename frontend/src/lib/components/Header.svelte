@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from '$lib/icon/Icon.svelte';
+
   let { title, onback, children }: {
     title: string;
     onback?: () => void;
@@ -9,7 +11,7 @@
 <div class="header">
   {#if onback}
     <button class="back-btn" onclick={onback}>
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+      <Icon name="chevron-left" size={24} />
     </button>
   {/if}
   <span class="header-title">{title}</span>

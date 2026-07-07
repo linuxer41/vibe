@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/icon/Icon.svelte';
   let { onclose, onchange }: { onclose?: () => void; onchange?: () => void } = $props();
 
   const PRESETS = [
@@ -130,7 +131,7 @@
         class:active={activeUrl === preset.url}
         onclick={() => selectPreset(preset.url, preset.label)}
       >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><path d="M6 6h.01M6 18h.01"/></svg>
+        <Icon name="settings" size={16} style="color: var(--accent)" />
         <span>{preset.label}</span>
         <span class="bs-url-hint">{preset.url}</span>
       </button>
@@ -142,7 +143,7 @@
   <div class="bs-section-row">
     <span class="bs-section-title">Servidores personalizados</span>
     <button class="bs-add-btn" onclick={() => showInput = !showInput}>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      <Icon name="plus" size={16} />
       {showInput ? 'Cancelar' : 'Añadir'}
     </button>
   </div>
@@ -153,7 +154,7 @@
       <div class="bs-add-row">
         <input type="text" bind:value={newUrl} placeholder="http://192.168.1.100:3000" class="bs-input" onkeydown={(e) => e.key === 'Enter' && addCustom()} />
         <button class="bs-confirm-btn" onclick={addCustom} disabled={!newUrl.trim()}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+          <Icon name="check" size={16} strokeWidth={2.5} />
         </button>
       </div>
     </div>
@@ -169,7 +170,7 @@
               <div class="bs-edit-row">
                 <input type="text" bind:value={editUrl} placeholder="URL" class="bs-input bs-edit-input" onkeydown={(e) => { if (e.key === 'Enter') saveEdit(i); if (e.key === 'Escape') editingIndex = -1; }} />
                 <button class="bs-icon-btn bs-confirm-btn" onclick={() => saveEdit(i)}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  <Icon name="check" size={15} strokeWidth={2.5} />
                 </button>
               </div>
             </div>
@@ -179,10 +180,10 @@
               <span class="bs-custom-url">{server.url}</span>
             </button>
             <button class="bs-icon-btn" onclick={() => startEdit(i)} title="Editar">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              <Icon name="edit" size={15} />
             </button>
             <button class="bs-icon-btn bs-delete-btn" onclick={() => removeCustom(server)} title="Eliminar">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+              <Icon name="trash" size={15} />
             </button>
           {/if}
         </div>

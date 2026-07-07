@@ -1,6 +1,6 @@
 import { get } from 'svelte/store';
 import { user } from './stores';
-import { API_URL } from './helpers';
+import { getApiUrl } from './helpers';
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
   const padding = '='.repeat((4 - base64.length % 4) % 4);
@@ -19,7 +19,7 @@ export async function requestPushSubscription() {
     });
     const usr = get(user);
     if (usr) {
-      await fetch(`${API_URL}/push/subscribe`, {
+      await fetch(`${getApiUrl()}/push/subscribe`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: usr.id, subscription: sub.toJSON() }),

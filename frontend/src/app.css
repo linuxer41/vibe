@@ -1,4 +1,10 @@
 :root, [data-theme="dark"] {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --status-bar-height: env(safe-area-inset-top, 0px);
+  --nav-bar-height: env(safe-area-inset-bottom, 0px);
   --bg: #0f0f0f;
   --bg-2: #1a1a1a;
   --bg-3: #2a2a2a;

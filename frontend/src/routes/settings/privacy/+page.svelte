@@ -9,6 +9,7 @@
   import Toggle from '$lib/components/Toggle.svelte';
   import { socket, privacySettings, blockedUsers } from '$lib/stores';
   import type { PrivacySettings } from '$lib/types';
+  import Icon from '$lib/icon/Icon.svelte';
 
   let sk: any = $state(null);
   let ps = $state<PrivacySettings>({
@@ -70,7 +71,7 @@
       <div class="picker-header">
         <h3>{picking.replace(/_/g, ' ')}</h3>
         <button class="picker-close" onclick={() => picking = null}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <Icon name="x" size={20} />
         </button>
       </div>
       <div class="picker-options">
@@ -78,7 +79,7 @@
           <button class="picker-option" class:selected={ps[picking as keyof PrivacySettings] === opt} onclick={() => { updateField(picking!, opt); picking = null; }}>
             <span>{whoLabels[opt]}</span>
             {#if ps[picking as keyof PrivacySettings] === opt}
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+              <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
             {/if}
           </button>
         {/each}

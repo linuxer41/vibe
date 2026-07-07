@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/icon/Icon.svelte';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
@@ -166,15 +167,15 @@
 <div class="chat-view" onclick={closeContext}>
   <div class="chat-header">
     <button class="back-btn" onclick={() => goto('/')}>
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <Icon name="chevron-left" size={24} />
     </button>
 
     {#if showSearch}
       <div class="search-bar">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <Icon name="search" size={16} style="color: var(--text-3)" />
         <input type="text" bind:value={searchQuery} placeholder="Buscar en el chat..." oninput={doSearch} />
         <button class="icon-btn" onclick={() => { showSearch = false; searchQuery = ''; searchResults = []; }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <Icon name="x" size={18} />
         </button>
       </div>
     {:else}
@@ -184,16 +185,16 @@
         <span class="chat-header-status">{typing || 'En línea'}</span>
       </div>
       <button class="icon-btn" onclick={() => showSearch = true}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        <Icon name="search" size={20} />
       </button>
       <button class="icon-btn" onclick={startVideoCall}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 7l-7.5 3.5L23 7z"/><rect x="1" y="5" width="16" height="14" rx="2" ry="2"/></svg>
+        <Icon name="video" size={22} />
       </button>
       <button class="icon-btn" onclick={startVoiceCall}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+        <Icon name="phone" size={22} />
       </button>
       <button class="icon-btn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        <Icon name="more-v" size={20} variant="filled" />
       </button>
     {/if}
   </div>
@@ -242,7 +243,7 @@
               {/if}
               {#if msg.forwarded}
                 <div class="msg-forwarded">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M14 5v4C7 9 4 15 2 19c3-3 6-5 12-5v4l8-7-8-7z"/></svg>
+                  <Icon name="forward" size={12} variant="filled" />
                   Reenviado
                 </div>
               {/if}
@@ -250,13 +251,13 @@
               <div class="msg-meta">
                 <span class="msg-time">{formatTime(msg.created_at)}</span>
                 {#if msg.sender_id === usr?.id}
-                  <svg width="14" height="14" viewBox="0 0 16 11" fill="#53bdeb"><path d="M11.071.653a.457.457 0 0 0-.304-.102.493.493 0 0 0-.381.178l-5.94 6.35-2.63-2.63a.458.458 0 0 0-.65.05.46.46 0 0 0-.05.56l2.92 3.32a.47.47 0 0 0 .35.18h.02a.47.47 0 0 0 .35-.15l6.38-6.81a.45.45 0 0 0-.075-.66z"/></svg>
+                  <Icon name="check" size={14} variant="filled" style="color: #53bdeb" />
                 {/if}
               </div>
             </div>
             {#if msg.sender_id === usr?.id}
               <button class="msg-ctx-trigger" onclick={(e) => openContext(e, msg)}>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
+                <Icon name="more-v" size={14} variant="filled" />
               </button>
             {/if}
           {/if}
@@ -269,12 +270,12 @@
     <div class="ctx-menu" onclick={(e) => e.stopPropagation()}>
       {#if contextMsg.sender_id === usr?.id}
         <button class="ctx-btn ctx-danger" onclick={() => deleteMessage(contextMsg!)}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <Icon name="trash" size={16} />
           Eliminar mensaje
         </button>
       {/if}
       <button class="ctx-btn" onclick={() => openForward(contextMsg!)}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 5v4C7 9 4 15 2 19c3-3 6-5 12-5v4l8-7-8-7z"/></svg>
+        <Icon name="forward" size={16} />
         Reenviar
       </button>
     </div>
@@ -284,22 +285,22 @@
 
   <div class="input-bar">
     <button class="icon-btn" onclick={toggleStickers}>
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round"><path d="M16 21a5 5 0 0 0 5-5V8a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h11z"/><path d="M9 14a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M10 11h.01"/></svg>
+      <Icon name="image" size={22} style="color: var(--text-3)" />
     </button>
     <div class="input-wrap">
       <button class="icon-btn input-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round"><path d="M15 3h6v6M21 3l-7 7M3 21l7-7"/></svg>
+        <Icon name="link" size={20} style="color: var(--text-3)" />
       </button>
       <input type="text" bind:value={input} placeholder="Message" onkeydown={(e) => e.key === 'Enter' && sendMessage()} oninput={(e) => { chatInput.set((e.target as HTMLInputElement).value); onChatInput(); }} />
       <button class="icon-btn input-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <Icon name="globe" size={20} style="color: var(--text-3)" />
       </button>
     </div>
     <button class="mic-btn" onclick={sendMessage}>
       {#if input.trim()}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+        <Icon name="send" size={20} strokeWidth={2.5} style="color: #fff" />
       {:else}
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4z"/><path d="M19 10a7 7 0 0 1-14 0H3a9 9 0 0 0 8 8.94V22h2v-3.06A9 9 0 0 0 21 10h-2z"/></svg>
+        <Icon name="mic" size={20} variant="filled" style="color: #fff" />
       {/if}
     </button>
   </div>
@@ -311,7 +312,7 @@
         <div class="sticker-header">
           <h3>Stickers</h3>
           <button class="icon-btn" onclick={() => showStickers = false}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            <Icon name="x" size={20} />
           </button>
         </div>
         <div class="sticker-grid">
@@ -324,13 +325,13 @@
             <div class="sticker-empty">
               <p>No tienes stickers</p>
               <button class="sticker-shop-btn" onclick={() => { showStickers = false; goto('/sticker-shop'); }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+                <Icon name="cart" size={16} />
                 Tienda de Stickers
               </button>
             </div>
           {:else}
             <button class="sticker-shop-link" onclick={() => { showStickers = false; goto('/sticker-shop'); }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+              <Icon name="cart" size={16} />
               Tienda de Stickers
             </button>
           {/if}
@@ -345,7 +346,7 @@
       <div class="forward-header">
         <h3>Reenviar mensaje</h3>
         <button class="icon-btn" onclick={() => { showForward = false; forwardMsg = null; }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <Icon name="x" size={20} />
         </button>
       </div>
       <div class="forward-list">

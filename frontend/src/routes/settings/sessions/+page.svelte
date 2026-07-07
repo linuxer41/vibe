@@ -5,6 +5,7 @@
   import Header from '$lib/components/Header.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
+  import Icon from '$lib/icon/Icon.svelte';
   import { socket, sessions } from '$lib/stores';
   import type { Session } from '$lib/types';
 
@@ -52,7 +53,7 @@
   <div class="content">
     {#if $sessions.length > 1}
       <button class="terminate-all" onclick={terminateAll}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 4l7.5 7.5M1 20l7.5-7.5M23 4l-7.5 7.5M23 20l-7.5-7.5"/></svg>
+        <Icon name="cast" size={16} />
         Cerrar todas las demás sesiones
       </button>
     {/if}
@@ -61,9 +62,9 @@
         <div class="session-row">
           <div class="session-icon">
             {#if deviceIcon(s.device_name) === 'phone'}
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+              <Icon name="phone" size={22} style="color: var(--accent)" />
             {:else}
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+              <Icon name="cast" size={22} style="color: var(--accent)" />
             {/if}
           </div>
           <div class="session-info">
@@ -72,7 +73,7 @@
           </div>
           {#if i > 0}
             <button class="terminate-btn" onclick={() => terminate(s.id)} title="Cerrar sesión">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              <Icon name="arrow-right" size={18} style="color: var(--danger)" />
             </button>
           {:else}
             <span class="current-badge">Actual</span>

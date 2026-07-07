@@ -863,7 +863,34 @@ io.on('connection', (socket) => {
   });
 
   socket.on('get_active_lives', async (_, cb) => {
-    try { cb?.(await db.getActiveLives()); } catch { cb?.([]); }
+  try { cb?.(await db.getActiveLives()); } catch { cb?.([]); }
+  });
+
+  // --- STORIES ---
+  socket.on('create_story', async (data, cb) => {
+    const { media } = data || {};
+    if (!media) { cb?.({ ok: false, error: 'Media requerida' }); return; }
+    try {
+      const story = await db.createStory(user.id, media);
+      cb?.({ ok: true, story });
+      const contactsList = await db.getContacts(user.id);
+      contactsList.forEach((c) => {
+        io.to(`user:${c.id}`).emit('new_story', story);
+      });
+      logger.info({ userId: user.id, storyId: story.id, action: 'create_story' }, 'Story creada');
+    } catch (e) { logger.error({ err: e.message, userId: user.id, action: 'create_story' }, 'Error creando story'); cb?.({ ok: false }); }
+  });
+
+  socket.on('get_stories', async (_, cb) => {
+    try { cb?.(await db.getStories(user.id)); } catch { cb?.([]); }
+  });
+
+  socket.on('view_story', async (data, cb) => {
+    const { storyId } = data || {};
+    try {
+      await db.viewStory(storyId, user.id);
+      cb?.({ ok: true });
+    } catch { cb?.({ ok: false }); }
   });
 
   // --- LIVE COMMENTS & REACTIONS ---

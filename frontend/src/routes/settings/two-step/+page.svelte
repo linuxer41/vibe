@@ -7,6 +7,7 @@
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
   import { socket, twoStepStatus } from '$lib/stores';
+  import Icon from '$lib/icon/Icon.svelte';
 
   let sk: any = $state(null);
   let ts = $state({ enabled: 0, hint: '' });
@@ -57,12 +58,12 @@
   <div class="content">
     {#if ts.enabled}
       <div class="status-badge active">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+        <Icon name="check" size={18} strokeWidth={2.5} />
         Activada
       </div>
     {:else}
       <div class="status-badge">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        <Icon name="x" size={18} />
         Desactivada
       </div>
     {/if}

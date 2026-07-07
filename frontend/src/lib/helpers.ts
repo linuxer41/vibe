@@ -6,8 +6,16 @@ import {
   tasks, games, stickerPacks, myStickers, showToast
 } from './stores';
 import type { User, Chat, Message, Post } from './types';
+import { showNotif } from '$lib/notifications';
 
 const AVATAR_BASE = 'https://i.pravatar.cc/80';
+
+export function applyThemeColors(theme: 'dark' | 'light') {
+  const bgColor = theme === 'dark' ? '#0f0f0f' : '#ffffff';
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', bgColor);
+  // Tauri window background handled via CSS / safe-area, no native import needed
+}
 function getStorageUrl(): string {
   if (typeof localStorage !== 'undefined') {
     const ls = localStorage.getItem('wa_storage_url');
@@ -15,7 +23,7 @@ function getStorageUrl(): string {
   }
   return import.meta.env.VITE_STORAGE_URL || 'http://localhost:3002';
 }
-function getBackendUrl(): string {
+export function getBackendUrl(): string {
   if (typeof localStorage !== 'undefined') {
     const ls = localStorage.getItem('wa_backend');
     if (ls === 'node') return 'http://localhost:3000';
@@ -25,7 +33,14 @@ function getBackendUrl(): string {
   const mode = import.meta.env.VITE_BACKEND || 'node';
   return mode === 'rust' ? 'http://localhost:3001' : 'http://localhost:3000';
 }
-export const API_URL = import.meta.env.VITE_API_URL || getBackendUrl();
+
+let _apiUrl: string | null = null;
+export function getApiUrl(): string {
+  if (!_apiUrl) {
+    _apiUrl = import.meta.env.VITE_API_URL || getBackendUrl();
+  }
+  return _apiUrl;
+}
 
 export function mediaUrl(url: string | undefined | null, opts: { w?: number; h?: number; fit?: string; format?: string; q?: number } = {}): string {
   if (!url) return '';
@@ -172,27 +187,39 @@ export function scrollToBottom(el: HTMLElement | undefined) {
 export function initSocket(sk: any) {
   if (!sk) return;
 
-  sk.on('new_message', (msg: Message) => {
+  sk.on('new_message', (msg: any) => {
     const ac = get(activeChat);
     if (ac && msg.chat_id === ac.id) {
       messages.update((m: Message[]) => [...m, msg]);
       sk.emit('mark_read', { messageId: msg.id });
+    } else if (msg.chat_id !== ac?.id) {
+      showNotif({ title: msg.sender_name || 'Vibe', body: msg.text || 'Nuevo mensaje', tag: `chat:${msg.chat_id}` });
     }
     loadChats();
   });
   sk.on('new_chat', () => loadChats());
-  sk.on('contact_added', () => loadContacts());
+  sk.on('contact_added', () => {
+    loadContacts();
+    showNotif({ title: 'Vibe', body: 'Nuevo contacto agregado' });
+  });
   sk.on('contact_status', ({ userId, online }: any) => {
     contacts.update((list: User[]) => list.map((c: User) => c.id === userId ? { ...c, online } : c));
   });
-  sk.on('new_post', () => loadPosts());
+  sk.on('new_post', (post: any) => {
+    loadPosts();
+    if (post?.display_name) showNotif({ title: 'Vibe', body: `Nuevo post de ${post.display_name}` });
+  });
   sk.on('new_video', () => {});
   sk.on('typing', ({ name }: any) => typingText.set(`${name} está escribiendo...`));
   sk.on('stop_typing', () => typingText.set(''));
   sk.on('new_poll', (poll: any) => {
     showToast('Nueva encuesta en el chat');
+    showNotif({ title: 'Vibe', body: 'Nueva encuesta en el chat' });
   });
-  sk.on('new_task', () => loadTasks());
+  sk.on('new_task', () => {
+    loadTasks();
+    showNotif({ title: 'Vibe', body: 'Nueva tarea' });
+  });
   sk.on('new_meme', () => loadMemes());
   sk.on('focus_started', (fs: any) => {
     showToast('Modo ' + fs.mode + ' activado');
@@ -200,9 +227,13 @@ export function initSocket(sk: any) {
   sk.on('focus_ended', () => {
     showToast('Sesión de enfoque finalizada');
   });
+  sk.on('incoming_call', (call: any) => {
+    showNotif({ title: 'Llamada entrante', body: call.callerName || 'Alguien te llama', tag: `call:${call.callId}` });
+  });
   sk.on('new_notification', (notification: any) => {
     notifications.update((n: any[]) => [notification, ...n]);
     showToast(notification.message, 'info');
+    showNotif({ title: 'Vibe', body: notification.message, tag: `notif:${notification.id}` });
   });
 
   loadChats();

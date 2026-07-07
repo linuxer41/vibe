@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 
 // @ts-expect-error process is a nodejs global
-const host = process.env.TAURI_DEV_HOST;
+const host = process.env.TAURI_DEV_HOST || '192.168.100.8';
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
@@ -17,7 +17,7 @@ export default defineConfig(async () => ({
     port: 1420,
     strictPort: true,
     host: host || false,
-    allowedHosts: ["vibe-app.iathings.com"],
+    allowedHosts: ["vibe-app.iathings.com", "international-whilst-victory-eugene.trycloudflare.com"],
     hmr: host
       ? {
           protocol: "ws",

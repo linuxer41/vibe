@@ -10,6 +10,17 @@ use tracing::{error, info, warn};
 
 pub type DbPool = Pool;
 
+pub async fn keepalive_ping(pool: &DbPool) {
+    match pool.get().await {
+        Ok(client) => {
+            let _ = client.query_one("SELECT 1", &[]).await;
+        }
+        Err(e) => {
+            warn!(err = %e, action = "keepalive", "DB ping failed");
+        }
+    }
+}
+
 pub async fn init_db(pool: &DbPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let max_retries: u32 = 30;
     for i in 0..max_retries {
@@ -63,11 +74,12 @@ pub async fn send_code(pool: &DbPool, phone: &str) -> Result<String, Box<dyn std
     let code = format!("{:06}", rand::random::<u32>() % 1000000);
     let expires = Utc::now() + chrono::Duration::minutes(5);
     let expires_naive = expires.naive_utc();
+    let id = snowflake::generate();
     let client = pool.get().await?;
     client
         .execute(
-            "INSERT INTO verification_codes (phone, code, expires_at) VALUES ($1, $2, $3)",
-            &[&phone.to_string(), &code, &expires_naive],
+            "INSERT INTO verification_codes (id, phone, code, expires_at) VALUES ($1, $2, $3, $4)",
+            &[&id, &phone.to_string(), &code, &expires_naive],
         )
         .await?;
     Ok(code)
@@ -1018,12 +1030,13 @@ pub async fn spend_stars(
 ) -> Result<i32, Box<dyn std::error::Error + Send + Sync>> {
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let client = pool.get().await?;
+    let stars_delta = -amount;
     let rows = client
         .query(
             "INSERT INTO vibe_balance (user_id, date, stars) VALUES ($1, $2, $3)
              ON CONFLICT (user_id, date) DO UPDATE SET stars = vibe_balance.stars + $3
              RETURNING stars",
-            &[&user_id, &today, &(-amount)],
+            &[&user_id, &today, &stars_delta],
         )
         .await?;
     let stars: Option<i32> = rows[0].get("stars");
@@ -1044,10 +1057,11 @@ pub async fn send_live_gift(
     }
     let id = crate::snowflake::generate();
     let client = pool.get().await?;
+    let msg = message.to_string();
     let rows = client
         .query(
             "INSERT INTO live_gifts (id, live_id, sender_id, recipient_id, stars, message) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-            &[&id, &live_id, &sender_id, &recipient_id, &stars, &message.to_string()],
+            &[&id, &live_id, &sender_id, &recipient_id, &stars, &msg],
         )
         .await?;
     let created_at: chrono::NaiveDateTime = rows[0].get("created_at");
@@ -1796,6 +1810,101 @@ pub async fn get_active_lives(
             }
         })
         .collect())
+}
+
+pub async fn create_story(
+    pool: &DbPool,
+    user_id: i64,
+    media_url: &str,
+) -> Result<Story, Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    let id = snowflake::generate();
+    let row = client
+        .query_one(
+            "INSERT INTO stories (id, user_id, media_url, expires_at)
+             VALUES ($1, $2, $3, NOW() + INTERVAL '24 hours')
+             RETURNING *",
+            &[&id, &user_id, &media_url],
+        )
+        .await?;
+    let created_at: chrono::NaiveDateTime = row.get("created_at");
+    let expires_at: chrono::NaiveDateTime = row.get("expires_at");
+    Ok(Story {
+        id: row.get("id"),
+        user_id: row.get("user_id"),
+        media_url: row.get("media_url"),
+        created_at: created_at.and_utc().to_rfc3339(),
+        expires_at: expires_at.and_utc().to_rfc3339(),
+        views_count: row.get("views_count"),
+        display_name: None,
+        avatar: None,
+        username: None,
+    })
+}
+
+pub async fn get_stories(
+    pool: &DbPool,
+    user_id: i64,
+) -> Result<Vec<StoryGroup>, Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "SELECT s.*, u.display_name, u.avatar, u.username
+             FROM stories s JOIN users u ON s.user_id = u.id
+             WHERE s.expires_at > NOW()
+               AND (s.user_id = $1 OR s.user_id IN (SELECT contact_user_id FROM contacts WHERE user_id = $1))
+             ORDER BY s.user_id, s.created_at DESC",
+            &[&user_id],
+        )
+        .await?;
+    let mut groups: Vec<StoryGroup> = Vec::new();
+    for r in &rows {
+        let uid: i64 = r.get("user_id");
+        if let Some(g) = groups.iter_mut().find(|g: &&mut StoryGroup| g.user.id == uid) {
+            let created_at: chrono::NaiveDateTime = r.get("created_at");
+            let expires_at: chrono::NaiveDateTime = r.get("expires_at");
+            g.stories.push(StoryItem {
+                id: r.get("id"),
+                media_url: r.get("media_url"),
+                created_at: created_at.and_utc().to_rfc3339(),
+                expires_at: expires_at.and_utc().to_rfc3339(),
+                views_count: r.get("views_count"),
+            });
+        } else {
+            let created_at: chrono::NaiveDateTime = r.get("created_at");
+            let expires_at: chrono::NaiveDateTime = r.get("expires_at");
+            groups.push(StoryGroup {
+                user: StoryUser {
+                    id: uid,
+                    display_name: r.get("display_name"),
+                    avatar: r.get("avatar"),
+                    username: r.get("username"),
+                },
+                stories: vec![StoryItem {
+                    id: r.get("id"),
+                    media_url: r.get("media_url"),
+                    created_at: created_at.and_utc().to_rfc3339(),
+                    expires_at: expires_at.and_utc().to_rfc3339(),
+                    views_count: r.get("views_count"),
+                }],
+            });
+        }
+    }
+    Ok(groups)
+}
+
+pub async fn view_story(
+    pool: &DbPool,
+    story_id: i64,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    client
+        .execute(
+            "UPDATE stories SET views_count = views_count + 1 WHERE id = $1",
+            &[&story_id],
+        )
+        .await?;
+    Ok(())
 }
 
 // --- CHANNELS ---

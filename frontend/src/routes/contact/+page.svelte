@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/icon/Icon.svelte';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { goto } from '$app/navigation';
@@ -52,11 +53,11 @@
   <div class="profile-view">
     <div class="profile-header">
       <button class="back-btn" onclick={() => goto('/contacts')}>
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <Icon name="chevron-left" size={24} />
       </button>
       <span>Contacto</span>
       <button class="icon-btn">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>
+        <Icon name="more-v" size={20} variant="filled" />
       </button>
     </div>
     <div class="profile-content">
@@ -67,25 +68,25 @@
         <div class="profile-actions">
           <button class="action-btn" onclick={() => logCall('audio', 'outgoing')}>
             <div class="action-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              <Icon name="phone" size={22} style="color: var(--accent)" />
             </div>
             <span>Audio</span>
           </button>
           <button class="action-btn" onclick={() => logCall('video', 'outgoing')}>
             <div class="action-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M23 7l-7.5 3.5L23 7z"/><rect x="1" y="5" width="16" height="14" rx="2" ry="2"/></svg>
+              <Icon name="video" size={22} style="color: var(--accent)" />
             </div>
             <span>Video</span>
           </button>
           <button class="action-btn">
             <div class="action-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              <Icon name="mic" size={22} style="color: var(--accent)" />
             </div>
             <span>Pay</span>
           </button>
           <button class="action-btn">
             <div class="action-icon">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+              <Icon name="search" size={22} style="color: var(--accent)" />
             </div>
             <span>Buscar</span>
           </button>
@@ -110,13 +111,13 @@
       <div class="profile-section">
         <div class="section-row no-hover" onclick={startChat}>
           <div class="section-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            <Icon name="message" size={20} style="color: var(--accent)" />
           </div>
           <span>Enviar mensaje</span>
         </div>
         <div class="section-row no-hover">
           <div class="section-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <Icon name="bell" size={20} style="color: var(--accent)" />
           </div>
           <span>Silenciar notificaciones</span>
           <label class="toggle">
@@ -128,13 +129,13 @@
       <div class="profile-section">
         <div class="section-row no-hover danger">
           <div class="section-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"/></svg>
+            <Icon name="phone-off" size={20} style="color: var(--danger)" />
           </div>
           <span>Bloquear contacto</span>
         </div>
         <div class="section-row no-hover danger">
           <div class="section-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+            <Icon name="x" size={20} style="color: var(--danger)" />
           </div>
           <span>Reportar contacto</span>
         </div>

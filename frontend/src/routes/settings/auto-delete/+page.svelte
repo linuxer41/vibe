@@ -6,6 +6,7 @@
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
   import { socket, accountDeletion } from '$lib/stores';
+  import Icon from '$lib/icon/Icon.svelte';
 
   let sk: any = $state(null);
   let deleteAt = $state<string | null>(null);
@@ -51,12 +52,12 @@
   <div class="content">
     {#if deleteAt}
       <div class="alert active">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <Icon name="info" size={20} style="color: var(--danger)" />
         <span>Tu cuenta se eliminará el {formatDate(deleteAt)}</span>
       </div>
     {:else}
       <div class="alert">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+        <Icon name="info" size={20} style="color: var(--text-3)" />
         <span>No hay eliminación programada</span>
       </div>
     {/if}
@@ -65,25 +66,25 @@
       <div class="option" class:selected={selectedDays === 30} onclick={() => schedule(30)}>
         <span>1 mes</span>
         {#if selectedDays === 30}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
         {/if}
       </div>
       <div class="option" class:selected={selectedDays === 90} onclick={() => schedule(90)}>
         <span>3 meses</span>
         {#if selectedDays === 90}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
         {/if}
       </div>
       <div class="option" class:selected={selectedDays === 180} onclick={() => schedule(180)}>
         <span>6 meses</span>
         {#if selectedDays === 180}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
         {/if}
       </div>
       <div class="option" class:selected={selectedDays === 365} onclick={() => schedule(365)}>
         <span>1 año</span>
         {#if selectedDays === 365}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+          <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
         {/if}
       </div>
     </SettingSection>

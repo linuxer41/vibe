@@ -360,6 +360,23 @@ export interface GameParticipant {
   score: number;
 }
 
+export interface Story {
+  id: number;
+  user_id: number;
+  media_url: string;
+  created_at: string;
+  expires_at: string;
+  views_count: number;
+  display_name?: string;
+  avatar?: string;
+  username?: string;
+}
+
+export interface StoryGroup {
+  user: { id: number; display_name: string; avatar: string; username: string };
+  stories: Story[];
+}
+
 export interface GameSession {
   id: number;
   game_id: number;

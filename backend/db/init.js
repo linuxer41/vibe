@@ -43,9 +43,10 @@ async function cleanupExpiredSessions() {
 async function sendCode(phone) {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   const expires = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+  const id = snowflake.generate();
   await pool.query(
-    'INSERT INTO verification_codes (phone, code, expires_at) VALUES ($1, $2, $3)',
-    [phone, code, expires]
+    'INSERT INTO verification_codes (id, phone, code, expires_at) VALUES ($1, $2, $3, $4)',
+    [id, phone, code, expires]
   );
   return code;
 }
@@ -531,11 +532,30 @@ async function getPosts(userId, filter = 'all', cursor = null, limit = 20) {
     params.push(userId);
   }
 
-  const sql = `SELECT p.*, u.display_name, u.avatar,
-    (SELECT COUNT(*) FROM post_views WHERE post_id = p.id) as views
-    FROM posts p JOIN users u ON p.user_id = u.id
-    WHERE ${conditions.join(' AND ')}
-    ORDER BY p.created_at DESC FETCH FIRST ${limitP} ROWS ONLY`;
+  let sql;
+  if (filter === 'all') {
+    sql = `SELECT p.*, u.display_name, u.avatar,
+      (SELECT COUNT(*) FROM post_views WHERE post_id = p.id) as views,
+      NULL as live_title, NULL as live_status
+      FROM posts p JOIN users u ON p.user_id = u.id
+      WHERE ${conditions.join(' AND ')}
+      UNION ALL
+      SELECT l.id AS id, l.user_id, l.title AS text, '' AS media, 'live' AS media_type,
+        u.display_name, u.avatar, l.started_at AS created_at,
+        l.started_at + INTERVAL '24 hours' AS expires_at,
+        0 AS views, 0 AS likes_count, 0 AS comments_count,
+        l.title AS live_title, l.status AS live_status
+      FROM lives l JOIN users u ON l.user_id = u.id
+      WHERE l.status = 'live'
+      ORDER BY created_at DESC FETCH FIRST ${limitP} ROWS ONLY`;
+  } else {
+    sql = `SELECT p.*, u.display_name, u.avatar,
+      (SELECT COUNT(*) FROM post_views WHERE post_id = p.id) as views,
+      NULL as live_title, NULL as live_status
+      FROM posts p JOIN users u ON p.user_id = u.id
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY p.created_at DESC FETCH FIRST ${limitP} ROWS ONLY`;
+  }
   const { rows } = await pool.query(sql, params);
   return rows;
 }
@@ -1297,6 +1317,50 @@ async function getActiveLives() {
   return rows;
 }
 
+// --- STORIES ---
+
+async function createStory(userId, mediaUrl) {
+  const id = snowflake.generate();
+  const expires = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const { rows } = await pool.query(
+    'INSERT INTO stories (id, user_id, media_url, expires_at) VALUES ($1, $2, $3, $4) RETURNING *',
+    [id, userId, mediaUrl, expires]
+  );
+  return rows[0];
+}
+
+async function getStories(userId) {
+  const { rows } = await pool.query(
+    `SELECT s.*, u.display_name, u.avatar, u.username
+     FROM stories s JOIN users u ON s.user_id = u.id
+     WHERE s.expires_at > NOW()
+       AND (s.user_id = $1 OR s.user_id IN (SELECT contact_user_id FROM contacts WHERE user_id = $1))
+     ORDER BY s.user_id, s.created_at DESC`,
+    [userId]
+  );
+  const grouped = {};
+  for (const r of rows) {
+    if (!grouped[r.user_id]) grouped[r.user_id] = { user: { id: r.user_id, display_name: r.display_name, avatar: r.avatar, username: r.username }, stories: [] };
+    grouped[r.user_id].stories.push({ id: r.id, media_url: r.media_url, created_at: r.created_at, expires_at: r.expires_at, views_count: r.views_count });
+  }
+  return Object.values(grouped);
+}
+
+async function getMyActiveStory(userId) {
+  const { rows } = await pool.query(
+    'SELECT * FROM stories WHERE user_id = $1 AND expires_at > NOW() ORDER BY created_at DESC FETCH FIRST 1 ROWS ONLY',
+    [userId]
+  );
+  return rows[0] || null;
+}
+
+async function viewStory(storyId, userId) {
+  await pool.query(
+    'UPDATE stories SET views_count = views_count + 1 WHERE id = $1',
+    [storyId]
+  );
+}
+
 // --- CHANNELS ---
 
 async function createChannel(name, description, ownerId) {
@@ -1869,6 +1933,8 @@ module.exports = {
   getAvailableGames, createGameSession, joinGameSession, updateGameScore, endGameSession,
   // Forward
   forwardMessage,
+  // Stories
+  createStory, getStories, getMyActiveStory, viewStory,
   cleanupExpiredSessions,
   // Recommendations
   storePostTags, recordInteraction, getRecommendedPosts, getTrendingTags,

@@ -8,6 +8,7 @@
   import { socket, blockedUsers } from '$lib/stores';
   import { avatarUrl } from '$lib/helpers';
   import type { User } from '$lib/types';
+  import Icon from '$lib/icon/Icon.svelte';
 
   let sk: any = $state(null);
   socket.subscribe((v) => sk = v);
@@ -28,7 +29,7 @@
   <div class="content">
     {#if $blockedUsers.length === 0}
       <div class="empty">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="1.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14"/></svg>
+        <Icon name="x" size={48} strokeWidth={1.5} style="color: var(--text-3)" />
         <p>No hay contactos bloqueados</p>
       </div>
     {:else}

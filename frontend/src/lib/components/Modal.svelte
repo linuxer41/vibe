@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import Icon from '$lib/icon/Icon.svelte';
 
   interface Action {
     label: string;
@@ -40,7 +41,7 @@
           {/if}
         </div>
         <button class="modal-close" onclick={onclose}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <Icon name="x" size={20} />
         </button>
       </div>
       {#if children}

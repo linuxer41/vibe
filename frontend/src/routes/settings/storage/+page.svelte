@@ -4,6 +4,7 @@
   import Header from '$lib/components/Header.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
+  import Icon from '$lib/icon/Icon.svelte';
 
   let storageUrl = $state(typeof localStorage !== 'undefined' ? localStorage.getItem('wa_storage_url') || '' : '');
 
@@ -25,7 +26,7 @@
     <SettingSection label="Servidor de archivos">
       <SettingRow label="URL del storage server" desc="Ej: http://localhost:3002">
         {#snippet icon()}
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          <Icon name="grid" size={22} style="color: var(--accent)" />
         {/snippet}
         {#snippet after()}
           <input

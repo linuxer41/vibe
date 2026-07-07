@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from '$lib/icon/Icon.svelte';
+
   let { label, desc, onclick, chevron, children, icon }: {
     label: string;
     desc?: string;
@@ -26,7 +28,7 @@
       {@render children()}
     </div>
   {:else if chevron}
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2" stroke-linecap="round"><path d="M9 18l6-6-6-6"/></svg>
+    <Icon name="chevron-right" size={16} style="color: var(--text-3)" />
   {/if}
 </div>
 

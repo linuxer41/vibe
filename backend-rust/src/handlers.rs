@@ -97,8 +97,9 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
                     let _ = ack.send(&serde_json::json!({"ok": true, "code": code}));
                 }
                 Err(e) => {
-                    error!(action = "send_code", phone = %phone, err = %e, "Error enviando código");
-                    let _ = ack.send(&serde_json::json!({"ok": false, "error": "Error interno"}));
+                    let msg = format!("{:#}", e);
+                    error!(action = "send_code", phone = %phone, err = %msg, "Error enviando código");
+                    let _ = ack.send(&serde_json::json!({"ok": false, "error": msg}));
                 }
             }
         },
@@ -154,8 +155,9 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
                     let _ = ack.send(&serde_json::json!({"ok": false, "error": "Código incorrecto o expirado"}));
                 }
                 Err(e) => {
-                    warn!("verify_code error: {}", e);
-                    let _ = ack.send(&serde_json::json!({"ok": false, "error": "Error interno"}));
+                    let msg = format!("{:#}", e);
+                    warn!(err = %msg, "verify_code error");
+                    let _ = ack.send(&serde_json::json!({"ok": false, "error": msg}));
                 }
             }
         },
@@ -1224,6 +1226,74 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
         },
     );
 
+    // --- STORIES ---
+
+    socket.on(
+        "create_story",
+        async |socket: SocketRef,
+         Data(data): Data<Value>,
+         ack: AckSender| {
+            let state = get_state();
+            let user_id = get_user_id(&state, &socket).await;
+            let media = data.get("media").and_then(|v| v.as_str()).unwrap_or("");
+            if media.is_empty() {
+                let _ = ack.send(&serde_json::json!({"ok": false, "error": "Media requerida"}));
+                return;
+            }
+            match db::create_story(&state.db, user_id, media).await {
+                Ok(story) => {
+                    let _ = ack.send(&serde_json::json!({"ok": true, "story": story}));
+                    if let Ok(contacts) = db::get_contacts(&state.db, user_id).await {
+                        for c in contacts {
+                            let _ = state.io.to(format!("user:{}", c.id)).emit("new_story", &story);
+                        }
+                    }
+                    info!(user_id, story_id = story.id, action = "create_story", "Story created");
+                }
+                Err(e) => {
+                    error!(err = %e, user_id, action = "create_story", "Error creating story");
+                    let _ = ack.send(&serde_json::json!({"ok": false}));
+                }
+            }
+        },
+    );
+
+    socket.on(
+        "get_stories",
+        async |socket: SocketRef,
+         _data: Data<Value>,
+         ack: AckSender| {
+            let state = get_state();
+            let user_id = get_user_id(&state, &socket).await;
+            match db::get_stories(&state.db, user_id).await {
+                Ok(stories) => {
+                    let _ = ack.send(&stories);
+                }
+                Err(_) => {
+                    let _ = ack.send(&serde_json::json!([]));
+                }
+            }
+        },
+    );
+
+    socket.on(
+        "view_story",
+        async |socket: SocketRef,
+         Data(data): Data<Value>,
+         ack: AckSender| {
+            let state = get_state();
+            let story_id = data.get("storyId").and_then(|v| v.as_i64()).unwrap_or(0);
+            match db::view_story(&state.db, story_id).await {
+                Ok(_) => {
+                    let _ = ack.send(&serde_json::json!({"ok": true}));
+                }
+                Err(_) => {
+                    let _ = ack.send(&serde_json::json!({"ok": false}));
+                }
+            }
+        },
+    );
+
     // --- LIVE COMMENTS & REACTIONS ---
 
     socket.on(
@@ -1348,8 +1418,9 @@ pub fn register_handlers(socket: SocketRef, state: Arc<AppState>, auth: Value) {
                     let _ = ack.send(&serde_json::json!({"ok": false, "error": "Estrellas insuficientes"}));
                 }
                 Err(e) => {
-                    warn!("send_live_gift error: {}", e);
-                    let _ = ack.send(&serde_json::json!({"ok": false, "error": "Error interno"}));
+                    let msg = format!("{:#}", e);
+                    warn!(err = %msg, "send_live_gift error");
+                    let _ = ack.send(&serde_json::json!({"ok": false, "error": msg}));
                 }
             }
         },

@@ -58,6 +58,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     db::init_db(&pool).await?;
     info!("Database connected");
 
+    // Keep DB connection alive with periodic ping
+    let keepalive_pool = pool.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            interval.tick().await;
+            db::keepalive_ping(&keepalive_pool).await;
+        }
+    });
+
     let (layer, io) = SocketIo::builder().build_layer();
 
     let push_mgr = PushManager::new();

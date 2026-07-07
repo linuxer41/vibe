@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from '$lib/icon/Icon.svelte';
   let { show, onclose, title, children }: {
     show: boolean;
     onclose: () => void;
@@ -16,7 +17,7 @@
       <div class="sheet-header">
         <h3 class="sheet-title">{title}</h3>
         <button class="sheet-close" onclick={onclose}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <Icon name="x" size={20} />
         </button>
       </div>
       <div class="sheet-body">
