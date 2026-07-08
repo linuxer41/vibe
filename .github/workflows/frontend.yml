@@ -140,6 +140,18 @@ jobs:
           name: vibe-windows-x64
           path: frontend/src-tauri/target/release/bundle/msi/*.msi
 
+      - name: Upload MSI to landing
+        if: ${{ secrets.UPLOAD_SECRET != '' && secrets.UPLOAD_URL != '' }}
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem frontend/src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
+          if (-not $msi) { Write-Host "No MSI found"; exit 0 }
+          $filename = $msi.Name
+          curl -X POST "${{ secrets.UPLOAD_URL }}/api/upload/windows/x86_64" `
+            -H "Authorization: Bearer ${{ secrets.UPLOAD_SECRET }}" `
+            -H "Content-Disposition: attachment; filename=`"$filename`"" `
+            --data-binary "@$($msi.FullName)"
+
   tauri-android:
     name: Tauri Android (.apk)
     runs-on: ubuntu-latest
@@ -194,3 +206,14 @@ jobs:
         with:
           name: vibe-android-arm64
           path: frontend/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
+
+      - name: Upload APK to landing
+        if: ${{ secrets.UPLOAD_SECRET != '' && secrets.UPLOAD_URL != '' }}
+        run: |
+          apk=$(ls frontend/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk 2>/dev/null | head -1)
+          if [ -z "$apk" ]; then echo "No APK found"; exit 0; fi
+          filename=$(basename "$apk")
+          curl -X POST "${{ secrets.UPLOAD_URL }}/api/upload/android/arm64" \
+            -H "Authorization: Bearer ${{ secrets.UPLOAD_SECRET }}" \
+            -H "Content-Disposition: attachment; filename=\"$filename\"" \
+            --data-binary "@$apk"

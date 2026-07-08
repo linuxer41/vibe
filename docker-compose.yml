@@ -111,6 +111,30 @@ services:
     # ports:
     #   - "3001:3001"
 
+  backend-go:
+    image: ghcr.io/linuxer41/vibe-backend-go:latest
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://linuxer:12345678@postgres:5432/vibe
+      VALKEY_URL: redis://valkey:6379
+      KAFKA_BROKER: kafka:9092
+      HTTP_PORT: "2002"
+      WS_PORT: "3002"
+      TCP_PORT: "4002"
+      STORAGE_URL: http://storage-server:3002
+    # ports:
+    #   - "2002:2002"
+    #   - "3002:3002"
+    #   - "4002:4002"
+
   frontend:
     image: ghcr.io/linuxer41/vibe-frontend:latest
     pull_policy: always
@@ -129,9 +153,23 @@ services:
     # ports:
     #   - "4173:4173"
 
+  landing:
+    image: ghcr.io/linuxer41/vibe-landing:latest
+    pull_policy: always
+    restart: unless-stopped
+    volumes:
+      - binaries:/app/binaries
+    environment:
+      PORT: "5173"
+      UPLOAD_SECRET: ${UPLOAD_SECRET}
+      BINARIES_DIR: /app/binaries
+    # ports:
+    #   - "5173:5173"
+
 volumes:
   pgdata:
   valkeydata:
   kafkadata:
   media:
   cache:
+  binaries:
