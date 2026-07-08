@@ -15,6 +15,8 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}-frontend
+  UPLOAD_SECRET: ${{ secrets.UPLOAD_SECRET }}
+  UPLOAD_URL: ${{ secrets.UPLOAD_URL }}
 
 jobs:
   docker:
@@ -144,9 +146,6 @@ jobs:
 
       - name: Upload MSI to landing
         if: ${{ env.UPLOAD_SECRET != '' && env.UPLOAD_URL != '' }}
-        env:
-          UPLOAD_SECRET: ${{ secrets.UPLOAD_SECRET }}
-          UPLOAD_URL: ${{ secrets.UPLOAD_URL }}
         shell: pwsh
         run: |
           $msi = Get-ChildItem frontend/src-tauri/target/release/bundle/msi/*.msi | Select-Object -First 1
@@ -214,9 +213,6 @@ jobs:
 
       - name: Upload APK to landing
         if: ${{ env.UPLOAD_SECRET != '' && env.UPLOAD_URL != '' }}
-        env:
-          UPLOAD_SECRET: ${{ secrets.UPLOAD_SECRET }}
-          UPLOAD_URL: ${{ secrets.UPLOAD_URL }}
         run: |
           apk=$(ls frontend/src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk 2>/dev/null | head -1)
           if [ -z "$apk" ]; then echo "No APK found"; exit 0; fi
