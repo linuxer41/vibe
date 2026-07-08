@@ -1,11 +1,11 @@
-name: Backend
+name: Backend Node
 
 on:
   push:
     branches: [main]
     paths:
       - 'backend-node/**'
-      - '.github/workflows/backend.yml'
+      - '.github/workflows/backend-node.yml'
   pull_request:
     branches: [main]
     paths:
@@ -14,7 +14,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-backend
+  IMAGE_NAME: ${{ github.repository }}-backend-node
 
 jobs:
   build:

@@ -1,6 +1,10 @@
 package config
 
-import "os"
+import (
+	"os"
+
+	"github.com/joho/godotenv"
+)
 
 type Config struct {
 	DatabaseURL string
@@ -16,6 +20,7 @@ type Config struct {
 }
 
 func Load() *Config {
+	godotenv.Load()
 	return &Config{
 		DatabaseURL: getEnv("DATABASE_URL", "postgres://user:password@localhost:5432/vibe"),
 		WSHost:      getEnv("WS_HOST", "0.0.0.0"),
