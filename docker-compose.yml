@@ -136,15 +136,6 @@ services:
     #   - "4002:4002"
 
   frontend:
-    image: ghcr.io/linuxer41/vibe-frontend:latest
-    pull_policy: always
-    restart: unless-stopped
-    depends_on:
-      - backend-node
-    # ports:
-    #   - "5173:80"
-
-  frontend-web:
     image: ghcr.io/linuxer41/vibe-frontend-web:latest
     pull_policy: always
     restart: unless-stopped

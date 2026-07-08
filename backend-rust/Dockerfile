@@ -2,9 +2,10 @@
 FROM --platform=$BUILDPLATFORM rust:slim-bookworm AS builder
 ARG TARGETARCH
 WORKDIR /app
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && \
+RUN dpkg --add-architecture arm64 && \
+    apt-get update && apt-get install -y pkg-config libssl-dev && \
     if [ "$TARGETARCH" = "arm64" ]; then \
-      apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross && \
+      apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross libssl-dev:arm64 && \
       rustup target add aarch64-unknown-linux-gnu; \
     fi && \
     rm -rf /var/lib/apt/lists/*
@@ -13,6 +14,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 COPY Cargo.toml Cargo.lock ./
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     if [ "$TARGETARCH" = "arm64" ]; then \
+      PKG_CONFIG_ALLOW_CROSS=1 \
+      PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu \
       CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
       cargo build --release --target aarch64-unknown-linux-gnu 2>/dev/null || true; \
     else \
@@ -21,6 +24,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 COPY src/ src/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     if [ "$TARGETARCH" = "arm64" ]; then \
+      PKG_CONFIG_ALLOW_CROSS=1 \
+      PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu \
       CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
       cargo build --release --target aarch64-unknown-linux-gnu && \
       cp target/aarch64-unknown-linux-gnu/release/vibe-backend /vibe-backend; \
