@@ -13,23 +13,23 @@
 
   function getCustomServers(): CustomServer[] {
     try {
-      const data = localStorage.getItem('wa_storage_custom');
+      const data = localStorage.getItem('storage_custom');
       return data ? JSON.parse(data) : [];
     } catch { return []; }
   }
 
   function saveCustomServers(list: CustomServer[]) {
-    localStorage.setItem('wa_storage_custom', JSON.stringify(list));
+    localStorage.setItem('storage_custom', JSON.stringify(list));
   }
 
   function getActiveLabel(): string {
-    const label = localStorage.getItem('wa_storage_label');
+    const label = localStorage.getItem('storage_label');
     if (label) return label;
     return 'Local';
   }
 
   function getActiveUrl(): string {
-    const ls = localStorage.getItem('wa_storage_url');
+    const ls = localStorage.getItem('storage_url');
     return ls && ls.startsWith('http') ? ls : 'http://localhost:3002';
   }
 
@@ -45,11 +45,11 @@
 
   function setActive(url: string, label: string) {
     if (url === 'http://localhost:3002') {
-      localStorage.removeItem('wa_storage_url');
-      localStorage.removeItem('wa_storage_label');
+      localStorage.removeItem('storage_url');
+      localStorage.removeItem('storage_label');
     } else {
-      localStorage.setItem('wa_storage_url', url);
-      localStorage.setItem('wa_storage_label', label);
+      localStorage.setItem('storage_url', url);
+      localStorage.setItem('storage_label', label);
     }
     activeUrl = url;
     activeLabel = label;

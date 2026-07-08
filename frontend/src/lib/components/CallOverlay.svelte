@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { avatarUrl } from '$lib/helpers';
   import { user, socket, activeCall, showToast } from '$lib/stores';
   import { createPeerConnection, createOffer, createAnswer, setIceCandidate } from '$lib/webrtc';
@@ -97,33 +98,32 @@
 
   async function doStartCall(peerId: number, type: string) {
     try {
-      sk.emit('start_call', { calleeId: peerId, type }, async (res: any) => {
-        if (!res?.callId) {
-          activeCall.set(null);
-          showToast('No se pudo iniciar la llamada', 'error');
-          _initiating = false;
-          return;
+      const res = await emit('start_call', { calleeId: peerId, type });
+      if (!res?.callId) {
+        activeCall.set(null);
+        showToast('No se pudo iniciar la llamada', 'error');
+        _initiating = false;
+        return;
+      }
+      const cid = res.callId;
+      activeCall.update((c: any) => c ? { ...c, callId: cid, status: 'connecting' } : c);
+      const stream = await navigator.mediaDevices.getUserMedia(
+        type === 'video' ? { audio: true, video: true } : { audio: true }
+      );
+      localStream = stream;
+      const peerConnection = createPeerConnection();
+      pc = peerConnection;
+      stream.getTracks().forEach(track => pc!.addTrack(track, stream));
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          emit('signal_data', { callId: cid, type: 'ice', data: e.candidate.toJSON() });
         }
-        const cid = res.callId;
-        activeCall.update((c: any) => c ? { ...c, callId: cid, status: 'connecting' } : c);
-        const stream = await navigator.mediaDevices.getUserMedia(
-          type === 'video' ? { audio: true, video: true } : { audio: true }
-        );
-        localStream = stream;
-        const peerConnection = createPeerConnection();
-        pc = peerConnection;
-        stream.getTracks().forEach(track => pc!.addTrack(track, stream));
-        pc.onicecandidate = (e) => {
-          if (e.candidate) {
-            sk.emit('signal_data', { callId: cid, type: 'ice', data: e.candidate.toJSON() });
-          }
-        };
-        pc.ontrack = (event) => {
-          remoteStream = event.streams[0];
-        };
-        const offer = await createOffer(pc);
-        sk.emit('signal_data', { callId: cid, type: 'offer', data: offer });
-      });
+      };
+      pc.ontrack = (event) => {
+        remoteStream = event.streams[0];
+      };
+      const offer = await createOffer(pc);
+      emit('signal_data', { callId: cid, type: 'offer', data: offer });
     } catch (err) {
       showToast('Error al iniciar llamada', 'error');
       cleanup();
@@ -135,7 +135,8 @@
     if (!sk || !call || _accepting) return;
     _accepting = true;
     const cid = call.callId;
-    sk.emit('accept_call', { callId: cid }, async (offer: any) => {
+    try {
+      const offer = await emit('accept_call', { callId: cid });
       if (!offer) {
         showToast('Error al aceptar llamada', 'error');
         _accepting = false;
@@ -152,26 +153,29 @@
         stream.getTracks().forEach(track => pc!.addTrack(track, stream));
         pc.onicecandidate = (e) => {
           if (e.candidate) {
-            sk.emit('signal_data', { callId: cid, type: 'ice', data: e.candidate.toJSON() });
+            emit('signal_data', { callId: cid, type: 'ice', data: e.candidate.toJSON() });
           }
         };
         pc.ontrack = (event) => {
           remoteStream = event.streams[0];
         };
         const answer = await createAnswer(pc, offer);
-        sk.emit('signal_data', { callId: cid, type: 'answer', data: answer });
+        emit('signal_data', { callId: cid, type: 'answer', data: answer });
         activeCall.update((c: any) => c ? { ...c, status: 'active', startTime: Date.now() } : c);
       } catch (err) {
         showToast('Error al conectar llamada', 'error');
         cleanup();
       }
       _accepting = false;
-    });
+    } catch {
+      showToast('Error al aceptar llamada', 'error');
+      _accepting = false;
+    }
   }
 
   function rejectCall() {
     if (!sk || !call) return;
-    sk.emit('reject_call', { callId: call.callId });
+    emit('reject_call', { callId: call.callId });
     activeCall.set(null);
   }
 
@@ -179,8 +183,8 @@
     if (pc) { pc.close(); pc = null; }
     if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     remoteStream = null;
-    if (call?.callId && sk) {
-      sk.emit('end_call', { callId: call.callId });
+    if (call?.callId) {
+      emit('end_call', { callId: call.callId });
     }
     activeCall.update((c: any) => c ? { ...c, status: 'ended' } : c);
     if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }

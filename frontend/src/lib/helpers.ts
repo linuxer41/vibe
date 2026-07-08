@@ -7,6 +7,7 @@ import {
 } from './stores';
 import type { User, Chat, Message, Post } from './types';
 import { showNotif } from '$lib/notifications';
+import { emit } from '$lib/socket';
 
 const AVATAR_BASE = 'https://i.pravatar.cc/80';
 
@@ -18,20 +19,27 @@ export function applyThemeColors(theme: 'dark' | 'light') {
 }
 function getStorageUrl(): string {
   if (typeof localStorage !== 'undefined') {
-    const ls = localStorage.getItem('wa_storage_url');
+    const ls = localStorage.getItem('storage_url');
     if (ls && ls.startsWith('http')) return ls;
   }
   return import.meta.env.VITE_STORAGE_URL || 'http://localhost:3002';
 }
+export function extractFileName(url: string): string {
+  if (!url) return '';
+  const parts = url.split('/');
+  const file = parts[parts.length - 1] || '';
+  return decodeURIComponent(file.split('?')[0]);
+}
 export function getBackendUrl(): string {
-  if (typeof localStorage !== 'undefined') {
-    const ls = localStorage.getItem('wa_backend');
-    if (ls === 'node') return 'http://localhost:3000';
-    if (ls === 'rust') return 'http://localhost:3001';
-    if (ls && ls.startsWith('http')) return ls;
-  }
+  try {
+    const raw = localStorage.getItem('wa_backend_config');
+    if (raw) {
+      const cfg = JSON.parse(raw);
+      if (cfg.httpUrl) return cfg.httpUrl;
+    }
+  } catch {}
   const mode = import.meta.env.VITE_BACKEND || 'node';
-  return mode === 'rust' ? 'http://localhost:3001' : 'http://localhost:3000';
+  return mode === 'rust' ? 'http://localhost:2001' : 'http://localhost:2000';
 }
 
 let _apiUrl: string | null = null;
@@ -45,13 +53,10 @@ export function getApiUrl(): string {
 export function mediaUrl(url: string | undefined | null, opts: { w?: number; h?: number; fit?: string; format?: string; q?: number } = {}): string {
   if (!url) return '';
 
-  // Extract filename from any URL format
   let filename = url;
-  if (url.startsWith('http://localhost:3001/uploads/') || url.startsWith('http://localhost:3000/uploads/'))
+  if (url.includes('/media/'))
     filename = url.split('/').pop() || url;
-  else if (url.startsWith('/uploads/') || url.startsWith('uploads/'))
-    filename = url.split('/').pop() || url;
-  else if (url.startsWith(getStorageUrl()))
+  else if (url.includes('/uploads/'))
     filename = url.split('/').pop() || url;
   else if (url.startsWith('http'))
     return url;
@@ -67,7 +72,8 @@ export function mediaUrl(url: string | undefined | null, opts: { w?: number; h?:
   return qs ? `${base}?${qs}` : base;
 }
 
-export function avatarUrl(id: number) {
+export function avatarUrl(id: number, avatar?: string | null) {
+  if (avatar) return avatar;
   return `${AVATAR_BASE}?u=${id}`;
 }
 
@@ -101,7 +107,13 @@ export function uploadViaSocket(
           const chunk = buf.slice(start, end);
           sent += chunk.byteLength;
 
-          sk.emit('upload_chunk', { uploadId, index: idx, data: chunk }, (chunkRes: any) => {
+          // Convert chunk ArrayBuffer to base64 for JSON transport
+          const chunkBytes = new Uint8Array(chunk);
+          let binary = '';
+          for (let i = 0; i < chunkBytes.length; i++) binary += String.fromCharCode(chunkBytes[i]);
+          const chunkB64 = btoa(binary);
+
+          sk.emit('upload_chunk', { uploadId, index: idx, data: chunkB64 }, (chunkRes: any) => {
             if (!chunkRes?.ok) {
               sk.emit('upload_cancel', { uploadId });
               onProgress?.(0, 'error');
@@ -112,12 +124,8 @@ export function uploadViaSocket(
             onProgress?.(pct, 'uploading');
             idx++;
             if (idx >= totalChunks) {
-              onProgress?.(1, 'processing');
-              // Last chunk response includes the final result
-              if (chunkRes.url) {
-                onProgress?.(1, 'done');
-                resolve({ ok: true, url: chunkRes.url, metadata: chunkRes.metadata });
-              }
+              onProgress?.(1, 'done');
+              resolve({ ok: chunkRes?.ok !== false, url: chunkRes?.url, metadata: chunkRes?.metadata });
             } else {
               sendNext();
             }
@@ -187,17 +195,34 @@ export function scrollToBottom(el: HTMLElement | undefined) {
 export function initSocket(sk: any) {
   if (!sk) return;
 
-  sk.on('new_message', (msg: any) => {
+  sk.on('new_message', (payload: any) => {
+    const { message, ...chatData } = payload;
+    if (!message) return;
+    // Update chat list: replace entire chat object
+    chats.update((list: any[]) => {
+      const idx = list.findIndex((c: any) => c.id === chatData.id);
+      if (idx === -1) return [chatData, ...list];
+      const updated = list.filter((_: any, i: number) => i !== idx);
+      updated.unshift(chatData);
+      return updated;
+    });
     const ac = get(activeChat);
-    if (ac && msg.chat_id === ac.id) {
-      messages.update((m: Message[]) => [...m, msg]);
-      sk.emit('mark_read', { messageId: msg.id });
-    } else if (msg.chat_id !== ac?.id) {
-      showNotif({ title: msg.sender_name || 'Vibe', body: msg.text || 'Nuevo mensaje', tag: `chat:${msg.chat_id}` });
+    if (ac && message.chat_id === ac.id) {
+      messages.update((m: Message[]) => [...m, message]);
+      emit('mark_read', { messageId: message.id }).catch(() => {});
+    } else if (message.chat_id !== ac?.id) {
+      showNotif({ title: message.sender_name || 'Vibe', body: message.text || 'Nuevo mensaje', tag: `chat:${message.chat_id}` });
     }
-    loadChats();
+    if (message.sender_id !== get(user)?.id) {
+      emit('message_delivered', { messageId: message.id, senderId: message.sender_id }).catch(() => {});
+    }
   });
-  sk.on('new_chat', () => loadChats());
+  sk.on('message_status', ({ messageId, status }: any) => {
+    messages.update((msgs: Message[]) => msgs.map((m) => m.id === messageId ? { ...m, status } : m));
+  });
+  sk.on('new_chat', (data: any) => {
+    if (data?.chatId) emit('join_chat', { chatId: data.chatId }).catch(() => {});
+  });
   sk.on('contact_added', () => {
     loadContacts();
     showNotif({ title: 'Vibe', body: 'Nuevo contacto agregado' });
@@ -235,94 +260,96 @@ export function initSocket(sk: any) {
     showToast(notification.message, 'info');
     showNotif({ title: 'Vibe', body: notification.message, tag: `notif:${notification.id}` });
   });
-
-  loadChats();
-  loadContacts();
-  loadPosts();
-  loadCalls();
-  loadChannels();
-  loadCommunities();
-  loadProducts();
-  loadMemes();
-  loadFlashDeals();
-  loadOrders();
-  loadWishlists();
-  loadVibeBalance();
-  loadNotifications();
-  loadGames();
-  loadStickerPacks();
-  loadMyStickers();
 }
 
-export function loadChats() {
-  const sk = get(socket) as any;
-  sk?.emit('get_chats', null, (list: Chat[]) => chats.set(list));
+export async function loadInitialData() {
+  await Promise.all([
+    loadChats(),
+    loadContacts(),
+    loadPosts(),
+    loadCalls(),
+    loadChannels(),
+    loadCommunities(),
+    loadProducts(),
+    loadMemes(),
+    loadFlashDeals(),
+    loadOrders(),
+    loadWishlists(),
+    loadVibeBalance(),
+    loadNotifications(),
+    loadGames(),
+    loadStickerPacks(),
+    loadMyStickers(),
+  ]);
 }
-export function loadContacts() {
-  const sk = get(socket) as any;
-  sk?.emit('get_contacts', null, (list: User[]) => contacts.set(list));
+
+export async function loadChats() {
+  try { const list = await emit<Chat[]>('get_chats'); chats.set(list || []); } catch {}
 }
-export function loadPosts() {
-  const sk = get(socket) as any;
-  sk?.emit('get_posts', null, (list: Post[]) => posts.set(list));
+export async function loadContacts() {
+  try { const list = await emit<User[]>('get_contacts'); contacts.set(list || []); } catch {}
 }
-export function loadCalls() {
-  const sk = get(socket) as any;
-  sk?.emit('get_calls', null, (list: any[]) => calls.set(list));
+export async function loadPosts() {
+  try { const list = await emit<Post[]>('get_posts'); posts.set(list || []); } catch {}
 }
-export function loadChannels() {
-  const sk = get(socket) as any;
-  sk?.emit('get_channels', (list: any[]) => channels.set(list || []));
+export async function loadCalls() {
+  try { const list = await emit<any[]>('get_calls'); calls.set(list || []); } catch {}
 }
-export function loadCommunities() {
-  const sk = get(socket) as any;
-  sk?.emit('get_communities', (list: any[]) => communities.set(list || []));
+export async function loadChannels() {
+  try { const list = await emit<any[]>('get_channels'); channels.set(list || []); } catch {}
 }
-export function loadProducts(category = '') {
-  const sk = get(socket) as any;
-  sk?.emit('get_products', { category }, (list: any[]) => products.set(list || []));
+export async function loadCommunities() {
+  try { const list = await emit<any[]>('get_communities'); communities.set(list || []); } catch {}
 }
-export function loadMemes() {
-  const sk = get(socket) as any;
-  sk?.emit('get_memes', {}, (list: any[]) => memes.set(list || []));
+export async function loadProducts(category = '') {
+  try { const list = await emit<any[]>('get_products', { category }); products.set(list || []); } catch {}
 }
-export function loadFlashDeals() {
-  const sk = get(socket) as any;
-  sk?.emit('get_flash_deals', (list: any[]) => flashDeals.set(list || []));
+export async function loadMemes() {
+  try { const list = await emit<any[]>('get_memes', {}); memes.set(list || []); } catch {}
 }
-export function loadOrders() {
-  const sk = get(socket) as any;
-  sk?.emit('get_my_orders', (list: any[]) => myOrders.set(list || []));
+export async function loadFlashDeals() {
+  try { const list = await emit<any[]>('get_flash_deals'); flashDeals.set(list || []); } catch {}
 }
-export function loadWishlists() {
-  const sk = get(socket) as any;
-  sk?.emit('get_wishlists', (list: any[]) => wishlists.set(list || []));
+export async function loadOrders() {
+  try { const list = await emit<any[]>('get_my_orders'); myOrders.set(list || []); } catch {}
 }
-export function loadVibeBalance() {
-  const sk = get(socket) as any;
-  sk?.emit('get_vibe_balance', (data: any) => vibeBalance.set(data));
+export async function loadWishlists() {
+  try { const list = await emit<any[]>('get_wishlists'); wishlists.set(list || []); } catch {}
 }
-export function loadNotifications() {
-  const sk = get(socket) as any;
-  sk?.emit('get_notifications', (list: any[]) => notifications.set(list || []));
+export async function loadVibeBalance() {
+  try { const data = await emit<any>('get_vibe_balance'); vibeBalance.set(data); } catch {}
 }
-export function loadTasks() {
-  const sk = get(socket) as any;
+export async function loadNotifications() {
+  try { const list = await emit<any[]>('get_notifications'); notifications.set(list || []); } catch {}
+}
+export async function loadTasks() {
   const ac = get(activeChat);
-  if (ac) sk?.emit('get_tasks', { chatId: ac.id }, (list: any[]) => tasks.set(list || []));
+  if (!ac) return;
+  try { const list = await emit<any[]>('get_tasks', { chatId: ac.id }); tasks.set(list || []); } catch {}
 }
-export function loadGames() {
-  const sk = get(socket) as any;
-  sk?.emit('get_games', (list: any[]) => games.set(list || []));
+export async function loadGames() {
+  try { const list = await emit<any[]>('get_games'); games.set(list || []); } catch {}
 }
-export function loadStickerPacks() {
-  const sk = get(socket) as any;
-  sk?.emit('get_sticker_packs', (list: any[]) => stickerPacks.set(list || []));
+export async function loadStickerPacks() {
+  try { const list = await emit<any[]>('get_sticker_packs'); stickerPacks.set(list || []); } catch {}
 }
-export function loadMyStickers() {
-  const sk = get(socket) as any;
-  sk?.emit('get_my_stickers', (list: any[]) => myStickers.set(list || []));
+export async function loadMyStickers() {
+  try { const list = await emit<any[]>('get_my_stickers'); myStickers.set(list || []); } catch {}
 }
 export function formatPrice(price: number) {
   return '$' + parseFloat(String(price)).toFixed(2);
+}
+
+export function formatLastSeen(iso: string | undefined | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  if (diffMs < 60000) return 'ahora';
+  const today = new Date();
+  if (d.toDateString() === today.toDateString()) return 'hoy a las ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (d.toDateString() === yesterday.toDateString()) return 'ayer a las ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString('es', { day: 'numeric', month: 'short' }) + ' a las ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }

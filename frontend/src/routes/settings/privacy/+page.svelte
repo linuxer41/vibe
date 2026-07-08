@@ -1,32 +1,39 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
   import Toggle from '$lib/components/Toggle.svelte';
-  import { socket, privacySettings, blockedUsers } from '$lib/stores';
+  import { privacySettings, blockedUsers } from '$lib/stores';
   import type { PrivacySettings } from '$lib/types';
   import Icon from '$lib/icon/Icon.svelte';
+  import type { IconName } from '$lib/icon/icons';
 
-  let sk: any = $state(null);
   let ps = $state<PrivacySettings>({
     last_seen: 'everyone', profile_photo: 'everyone',
     bio: 'everyone', status: 'contacts', calls: 'everyone',
     read_receipts: 1, message_history: 1
   });
 
-  socket.subscribe((v) => sk = v);
   privacySettings.subscribe((v) => ps = v);
 
   onMount(() => {
-    sk?.emit('get_privacy_settings', (res: any) => {
-      privacySettings.set(res);
-    });
-    sk?.emit('get_blocked_users', (res: any) => blockedUsers.set(res));
+    loadPrivacy();
   });
+
+  async function loadPrivacy() {
+    try {
+      const res = await emit('get_privacy_settings');
+      if (res) privacySettings.set(res);
+    } catch {}
+    try {
+      const res = await emit('get_blocked_users');
+      if (res) blockedUsers.set(res);
+    } catch {}
+  }
 
   const whoOptions = ['everyone', 'contacts', 'nobody'] as const;
   const whoLabels: Record<string, string> = {
@@ -38,12 +45,11 @@
   function updateField(field: keyof PrivacySettings, value: any) {
     const updated = { ...ps, [field]: value };
     privacySettings.set(updated);
-    sk?.emit('update_privacy_settings', { [field]: value });
+    emit('update_privacy_settings', { [field]: value });
   }
 </script>
 
-<Page>
-  <Header title="Privacidad" onback={() => goto('/settings')} />
+<HeaderLayout title="Privacidad" showBack onBack={() => goto('/settings')}>
   <div class="content">
     <SettingSection label="Quién puede ver mi información personal">
       <SettingRow label="Última vez y en línea" desc={whoLabels[ps.last_seen]} chevron onclick={() => picking = 'last_seen'} />
@@ -62,7 +68,7 @@
       <SettingRow label="Contactos bloqueados" desc={`${$blockedUsers.length} contactos`} chevron onclick={() => goto('/settings/blocked')} />
     </SettingSection>
   </div>
-</Page>
+</HeaderLayout>
 
 <!-- Picker BottomSheet -->
 {#if picking}

@@ -1,0 +1,6 @@
+namespace Vibe.Presence;
+
+table StatusPayload {
+  user_id: uint64;
+  online: bool;
+}

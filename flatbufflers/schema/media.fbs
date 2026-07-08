@@ -1,0 +1,32 @@
+namespace Vibe.Media;
+
+table UploadStartRequest {
+  name: string (required);
+  mime: string (required);
+  size: uint32;
+  total_chunks: ushort;
+}
+
+table UploadStartResponse {
+  ok: bool;
+  upload_id: string;
+  error: string;
+}
+
+table UploadChunkRequest {
+  upload_id: string (required);
+  index: ushort;
+  data: [ubyte] (required);
+}
+
+table UploadChunkResponse {
+  ok: bool;
+  received: uint32;
+  total: uint32;
+  url: string;
+  error: string;
+}
+
+table UploadCancelRequest {
+  upload_id: string (required);
+}

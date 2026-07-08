@@ -9,6 +9,7 @@
     "clipboard-manager:default",
     "camera:default",
     "vnidrop-share:default",
-    "notification:default"
+    "notification:default",
+    "system-bars-styles:default"
   ]
 }

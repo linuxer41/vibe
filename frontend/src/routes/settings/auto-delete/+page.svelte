@@ -1,42 +1,50 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
-  import { socket, accountDeletion } from '$lib/stores';
+  import { accountDeletion } from '$lib/stores';
   import Icon from '$lib/icon/Icon.svelte';
+  import type { IconName } from '$lib/icon/icons';
 
-  let sk: any = $state(null);
   let deleteAt = $state<string | null>(null);
   let selectedDays = $state(0);
 
-  socket.subscribe((v) => sk = v);
   accountDeletion.subscribe((v) => deleteAt = v);
 
   onMount(() => {
-    sk?.emit('get_account_deletion', (res: any) => {
-      accountDeletion.set(res.delete_at);
-      deleteAt = res.delete_at;
-    });
+    loadDeletion();
   });
 
-  function schedule(days: number) {
-    sk?.emit('schedule_account_deletion', { days }, () => {
+  async function loadDeletion() {
+    try {
+      const res = await emit('get_account_deletion');
+      if (res?.delete_at) {
+        accountDeletion.set(res.delete_at);
+        deleteAt = res.delete_at;
+      }
+    } catch {}
+  }
+
+  async function schedule(days: number) {
+    try {
+      await emit('schedule_account_deletion', { days });
       const d = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
       accountDeletion.set(d);
       deleteAt = d;
       selectedDays = days;
-    });
+    } catch {}
   }
 
-  function cancel() {
-    sk?.emit('cancel_account_deletion', {}, () => {
+  async function cancel() {
+    try {
+      await emit('cancel_account_deletion');
       accountDeletion.set(null);
       deleteAt = null;
       selectedDays = 0;
-    });
+    } catch {}
   }
 
   function formatDate(d: string) {
@@ -47,8 +55,7 @@
   }
 </script>
 
-<Page>
-  <Header title="Eliminación automática" onback={() => goto('/settings/security')} />
+<HeaderLayout title="Eliminación automática" showBack onBack={() => goto('/settings/security')}>
   <div class="content">
     {#if deleteAt}
       <div class="alert active">
@@ -99,7 +106,7 @@
       </button>
     {/if}
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .content { flex: 1; overflow-y: auto; }

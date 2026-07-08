@@ -1,4 +1,3 @@
-import type { Socket } from 'socket.io-client';
 import type { User, Live, LiveComment, LiveReaction, Post, PostComment, WatchSession } from './types';
 
 export interface ServerEvents {
@@ -24,7 +23,18 @@ export interface ClientEvents {
   [event: string]: (...args: any[]) => void;
 }
 
-export type TypedSocket = Socket<ServerEvents, ClientEvents>;
+export interface VibeSocket {
+  id: string;
+  connected: boolean;
+  connect(): void;
+  close(): void;
+  disconnect(): void;
+  emit(event: string, data?: any, callback?: (res: any) => void): void;
+  on(event: string, handler: (...args: any[]) => void): void;
+  off(event: string, handler: (...args: any[]) => void): void;
+}
+
+export type TypedSocket = VibeSocket;
 
 export function typedSocket(sk: any): TypedSocket {
   return sk as TypedSocket;

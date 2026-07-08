@@ -3779,6 +3779,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "tauri-plugin-system-bars-styles"
+version = "0.1.0"
+source = "git+https://github.com/linuxer41/tauri-plugin-system-bars-styles?branch=main#f30c9bef9ba92cb4473d0168fd5066d7d08c0afe"
+dependencies = [
+ "log",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "tauri-plugin-vnidrop-share"
 version = "1.0.0-rc"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4459,6 +4472,7 @@ dependencies = [
  "tauri-plugin-clipboard-manager",
  "tauri-plugin-notification",
  "tauri-plugin-opener",
+ "tauri-plugin-system-bars-styles",
  "tauri-plugin-vnidrop-share",
  "tokio",
 ]

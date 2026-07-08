@@ -1,0 +1,42 @@
+namespace Vibe.Auth;
+
+table SendCodeRequest {
+  phone: string (required);
+}
+
+table SendCodeResponse {
+  ok: bool;
+  code: string;
+  error: string;
+}
+
+table VerifyCodeRequest {
+  phone: string (required);
+  code: string (required);
+  username: string;
+  display_name: string;
+  country_code: string;
+}
+
+table VerifyCodeResponse {
+  ok: bool;
+  token: string;
+  user_id: uint64;
+  display_name: string;
+  avatar: string;
+  is_new: bool;
+  error: string;
+}
+
+table RestoreSessionRequest {
+  token: string (required);
+}
+
+table RestoreSessionResponse {
+  ok: bool;
+  user_id: uint64;
+  display_name: string;
+  phone: string;
+  avatar: string;
+  bio: string;
+}

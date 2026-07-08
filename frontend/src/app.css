@@ -9,8 +9,10 @@
   --bg-2: #1a1a1a;
   --bg-3: #2a2a2a;
   --bg-chat: #0a0a0a;
+  --chat-bg-pattern: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" opacity="0.04"><path d="M0 10h40M0 20h40M0 30h40M10 0v40M20 0v40M30 0v40" stroke="white" stroke-width="0.5"/><path d="M0 0 40 40M40 0 0 40" stroke="white" stroke-width="0.3" opacity="0.5"/></svg>');
   --accent: #22c55e;
   --accent-hover: #16a34a;
+  --accent-rgb: 34,197,94;
   --text: #ffffff;
   --text-2: #9ca3af;
   --text-3: #6b7280;
@@ -27,6 +29,12 @@
   --check-sent: #8696a0;
   --check-read: #53bdeb;
   --bubble-radius: 18px;
+  --bubble-own-text: #e9edef;
+  --bubble-shadow: 0 1px 1px rgba(0,0,0,0.1);
+  --msg-time: rgba(255,255,255,0.45);
+  --msg-edited: rgba(255,255,255,0.35);
+  --msg-time-own: rgba(233,237,239,0.6);
+  --date-sep-bg: rgba(0,0,0,0.2);
   --input-radius: 24px;
   --status-ring: 2px;
 }
@@ -36,8 +44,10 @@
   --bg-2: #f0f2f5;
   --bg-3: #e9edef;
   --bg-chat: #efeae2;
+  --chat-bg-pattern: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" opacity="0.04"><path d="M0 10h40M0 20h40M0 30h40M10 0v40M20 0v40M30 0v40" stroke="black" stroke-width="0.5"/><path d="M0 0 40 40M40 0 0 40" stroke="black" stroke-width="0.3" opacity="0.5"/></svg>');
   --accent: #25d366;
   --accent-hover: #20bd5a;
+  --accent-rgb: 37,211,102;
   --text: #111b21;
   --text-2: #667781;
   --text-3: #8696a0;
@@ -54,6 +64,12 @@
   --check-sent: #8696a0;
   --check-read: #53bdeb;
   --bubble-radius: 18px;
+  --bubble-own-text: var(--text);
+  --bubble-shadow: 0 1px 1px rgba(0,0,0,0.06);
+  --msg-time: rgba(0,0,0,0.4);
+  --msg-edited: rgba(0,0,0,0.35);
+  --msg-time-own: rgba(0,0,0,0.45);
+  --date-sep-bg: rgba(0,0,0,0.04);
   --input-radius: 24px;
   --status-ring: 2px;
 }
@@ -64,11 +80,13 @@
   box-sizing: border-box;
 }
 
+html, body {
+  background: var(--bg-2);
+  height: 100%;
+  overflow: hidden;
+}
 body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  height: 100dvh;
-  overflow: hidden;
-  background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }

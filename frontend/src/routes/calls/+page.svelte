@@ -1,16 +1,15 @@
 <script lang="ts">
   import { avatarUrl, formatDate, formatDuration } from '$lib/helpers';
   import Icon from '$lib/icon/Icon.svelte';
-  import { user, socket, calls, activeCall } from '$lib/stores';
+  import { user, calls, activeCall } from '$lib/stores';
   import type { User } from '$lib/types';
   import CallOverlay from '$lib/components/CallOverlay.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
 
   let usr: User | null = $state(null);
-  let sk: any = $state(null);
   let callList: any[] = $state([]);
 
   user.subscribe((v) => usr = v);
-  socket.subscribe((v) => sk = v);
   calls.subscribe((v) => callList = v);
 
   function callFromHistory(c: any) {
@@ -27,7 +26,8 @@
   }
 </script>
 
-<div class="call-list">
+  <HeaderLayout title="Llamadas">
+  <div class="call-list">
   {#each callList as c}
     <div class="chat-item">
       <div class="call-icon-wrap" class:call-missed={c.status === 'missed'}>
@@ -65,7 +65,8 @@
   {/if}
 </div>
 
-<CallOverlay />
+  <CallOverlay />
+</HeaderLayout>
 
 <style>
   .call-list { flex: 1; overflow-y: auto; }

@@ -1,15 +1,15 @@
 <script lang="ts">
   import Icon from '$lib/icon/Icon.svelte';
+  import { getBackendConfig, setBackendConfig, type BackendConfig } from '$lib/backend-config';
   let { onclose, onchange }: { onclose?: () => void; onchange?: () => void } = $props();
 
-  const PRESETS = [
-    { label: 'Node.js', url: 'http://localhost:3000' },
-    { label: 'Rust', url: 'http://localhost:3001' },
+  const PRESETS: Array<{ label: string; cfg: BackendConfig }> = [
+    { label: 'Node.js', cfg: { wsUrl: 'ws://localhost:3000', tcpUrl: '127.0.0.1:4000', httpUrl: 'http://localhost:2000', label: 'Node.js' } },
+    { label: 'Rust', cfg: { wsUrl: 'ws://localhost:3001', tcpUrl: '127.0.0.1:5000', httpUrl: 'http://localhost:2001', label: 'Rust' } },
   ];
 
-  interface CustomServer {
+  interface CustomServer extends BackendConfig {
     label: string;
-    url: string;
   }
 
   function getCustomServers(): CustomServer[] {
@@ -23,103 +23,91 @@
     localStorage.setItem('wa_backend_custom', JSON.stringify(list));
   }
 
-  function getActiveLabel(): string {
-    const label = localStorage.getItem('wa_backend_label');
-    if (label) return label;
-    const ls = localStorage.getItem('wa_backend');
-    if (ls === 'node' || !ls) return 'Node.js';
-    if (ls === 'rust') return 'Rust';
-    return 'Custom';
-  }
-
-  function getActiveUrl(): string {
-    const ls = localStorage.getItem('wa_backend');
-    if (ls === 'node') return 'http://localhost:3000';
-    if (ls === 'rust') return 'http://localhost:3001';
-    if (ls && ls.startsWith('http')) return ls;
-    return 'http://localhost:3000';
-  }
-
-  let activeLabel = $state(getActiveLabel());
-  let activeUrl = $state(getActiveUrl());
+  let activeCfg = $state(getBackendConfig());
   let customServers = $state(getCustomServers());
+  let showInput = $state(false);
   let newLabel = $state('');
-  let newUrl = $state('');
+  let newWsUrl = $state('');
+  let newTcpUrl = $state('');
+  let newHttpUrl = $state('');
   let editingIndex = $state(-1);
   let editLabel = $state('');
-  let editUrl = $state('');
-  let showInput = $state(false);
+  let editWsUrl = $state('');
+  let editTcpUrl = $state('');
+  let editHttpUrl = $state('');
 
-  function setActive(url: string, label: string) {
-    localStorage.setItem('wa_backend', url);
-    localStorage.setItem('wa_backend_label', label);
-    activeUrl = url;
-    activeLabel = label;
+  function setActive(cfg: BackendConfig) {
+    setBackendConfig(cfg);
+    activeCfg = cfg;
     onchange?.();
   }
 
-  function selectPreset(url: string, label: string) {
-    setActive(url, label);
+  function selectPreset(cfg: BackendConfig) {
+    setActive(cfg);
   }
 
   function selectCustom(server: CustomServer) {
-    setActive(server.url, server.label);
+    setActive(server);
   }
 
   function addCustom() {
-    const label = newLabel.trim() || newUrl.trim();
-    let url = newUrl.trim();
-    if (!url) return;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'http://' + url;
-    }
-    if (customServers.some(s => s.url === url)) return;
-    const server: CustomServer = { label, url };
+    const label = newLabel.trim() || newWsUrl.trim();
+    if (!newWsUrl.trim() && !newHttpUrl.trim()) return;
+    const server: CustomServer = {
+      label,
+      wsUrl: newWsUrl.trim() || 'ws://localhost:3000',
+      tcpUrl: newTcpUrl.trim() || '127.0.0.1:4000',
+      httpUrl: newHttpUrl.trim() || 'http://localhost:2000',
+    };
+    if (customServers.some(s => s.wsUrl === server.wsUrl && s.httpUrl === server.httpUrl)) return;
     customServers = [...customServers, server];
     saveCustomServers(customServers);
-    setActive(url, label);
-    newLabel = '';
-    newUrl = '';
+    setActive(server);
+    newLabel = ''; newWsUrl = ''; newTcpUrl = ''; newHttpUrl = '';
     showInput = false;
   }
 
   function removeCustom(server: CustomServer) {
-    customServers = customServers.filter(s => s.url !== server.url);
+    customServers = customServers.filter(s => s.wsUrl !== server.wsUrl || s.httpUrl !== server.httpUrl);
     saveCustomServers(customServers);
-    if (activeUrl === server.url) {
-      setActive('http://localhost:3000', 'Node.js');
+    if (activeCfg.wsUrl === server.wsUrl && activeCfg.httpUrl === server.httpUrl) {
+      setActive(PRESETS[0].cfg);
     }
   }
 
   function startEdit(index: number) {
     editingIndex = index;
     editLabel = customServers[index].label;
-    editUrl = customServers[index].url;
+    editWsUrl = customServers[index].wsUrl;
+    editTcpUrl = customServers[index].tcpUrl;
+    editHttpUrl = customServers[index].httpUrl;
   }
 
   function saveEdit(index: number) {
-    const label = editLabel.trim() || editUrl.trim();
-    let url = editUrl.trim();
-    if (!url) return;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
-      url = 'http://' + url;
-    }
+    const label = editLabel.trim() || editWsUrl.trim();
+    if (!editWsUrl.trim() && !editHttpUrl.trim()) return;
     const list = [...customServers];
-    const wasActive = activeUrl === list[index].url;
-    list[index] = { label, url };
+    const wasActive = activeCfg.wsUrl === list[index].wsUrl && activeCfg.httpUrl === list[index].httpUrl;
+    list[index] = {
+      label,
+      wsUrl: editWsUrl.trim() || list[index].wsUrl,
+      tcpUrl: editTcpUrl.trim() || list[index].tcpUrl,
+      httpUrl: editHttpUrl.trim() || list[index].httpUrl,
+    };
     customServers = list;
     saveCustomServers(list);
-    if (wasActive) setActive(url, label);
+    if (wasActive) setActive(list[index]);
     editingIndex = -1;
-    editLabel = '';
-    editUrl = '';
+    editLabel = ''; editWsUrl = ''; editTcpUrl = ''; editHttpUrl = '';
   }
 </script>
 
 <div class="bs-current">
   <span class="bs-current-label">Servidor activo</span>
-  <span class="bs-current-url">{activeLabel}</span>
-  <span class="bs-current-sub">{activeUrl}</span>
+  <span class="bs-current-url">{activeCfg.label || 'Custom'}</span>
+  <span class="bs-current-sub">WS: {activeCfg.wsUrl}</span>
+  <span class="bs-current-sub">TCP: {activeCfg.tcpUrl}</span>
+  <span class="bs-current-sub">HTTP: {activeCfg.httpUrl}</span>
 </div>
 
 <div class="bs-section">
@@ -128,12 +116,12 @@
     {#each PRESETS as preset}
       <button
         class="bs-preset-btn"
-        class:active={activeUrl === preset.url}
-        onclick={() => selectPreset(preset.url, preset.label)}
+        class:active={activeCfg.wsUrl === preset.cfg.wsUrl && activeCfg.httpUrl === preset.cfg.httpUrl}
+        onclick={() => selectPreset(preset.cfg)}
       >
         <Icon name="settings" size={16} style="color: var(--accent)" />
         <span>{preset.label}</span>
-        <span class="bs-url-hint">{preset.url}</span>
+        <span class="bs-url-hint">WS: {preset.cfg.wsUrl}</span>
       </button>
     {/each}
   </div>
@@ -151,33 +139,55 @@
   {#if showInput}
     <div class="bs-add-form">
       <input type="text" bind:value={newLabel} placeholder="Nombre (ej: Mi Servidor)" class="bs-input" />
-      <div class="bs-add-row">
-        <input type="text" bind:value={newUrl} placeholder="http://192.168.1.100:3000" class="bs-input" onkeydown={(e) => e.key === 'Enter' && addCustom()} />
-        <button class="bs-confirm-btn" onclick={addCustom} disabled={!newUrl.trim()}>
-          <Icon name="check" size={16} strokeWidth={2.5} />
-        </button>
+      <div class="bs-url-field">
+        <span class="bs-url-prefix">WS</span>
+        <input type="text" bind:value={newWsUrl} placeholder="ws://localhost:3000" class="bs-input" />
       </div>
+      <div class="bs-url-field">
+        <span class="bs-url-prefix">TCP</span>
+        <input type="text" bind:value={newTcpUrl} placeholder="127.0.0.1:4000" class="bs-input" />
+      </div>
+      <div class="bs-url-field">
+        <span class="bs-url-prefix">HTTP</span>
+        <input type="text" bind:value={newHttpUrl} placeholder="http://localhost:2000" class="bs-input" onkeydown={(e) => e.key === 'Enter' && addCustom()} />
+      </div>
+      <button class="bs-confirm-btn bs-add-confirm" onclick={addCustom} disabled={!newWsUrl.trim() && !newHttpUrl.trim()}>
+        <Icon name="check" size={16} strokeWidth={2.5} />
+        Añadir servidor
+      </button>
     </div>
   {/if}
 
   {#if customServers.length > 0}
     <div class="bs-custom-list">
       {#each customServers as server, i}
-        <div class="bs-custom-item" class:active={activeUrl === server.url}>
+        <div class="bs-custom-item" class:active={activeCfg.wsUrl === server.wsUrl && activeCfg.httpUrl === server.httpUrl}>
           {#if editingIndex === i}
             <div class="bs-edit-form">
               <input type="text" bind:value={editLabel} placeholder="Nombre" class="bs-input bs-edit-input" />
-              <div class="bs-edit-row">
-                <input type="text" bind:value={editUrl} placeholder="URL" class="bs-input bs-edit-input" onkeydown={(e) => { if (e.key === 'Enter') saveEdit(i); if (e.key === 'Escape') editingIndex = -1; }} />
-                <button class="bs-icon-btn bs-confirm-btn" onclick={() => saveEdit(i)}>
-                  <Icon name="check" size={15} strokeWidth={2.5} />
-                </button>
+              <div class="bs-url-field">
+                <span class="bs-url-prefix">WS</span>
+                <input type="text" bind:value={editWsUrl} placeholder="ws://..." class="bs-input bs-edit-input" />
               </div>
+              <div class="bs-url-field">
+                <span class="bs-url-prefix">TCP</span>
+                <input type="text" bind:value={editTcpUrl} placeholder="ip:port" class="bs-input bs-edit-input" />
+              </div>
+              <div class="bs-url-field">
+                <span class="bs-url-prefix">HTTP</span>
+                <input type="text" bind:value={editHttpUrl} placeholder="http://..." class="bs-input bs-edit-input" onkeydown={(e) => { if (e.key === 'Enter') saveEdit(i); if (e.key === 'Escape') editingIndex = -1; }} />
+              </div>
+              <button class="bs-confirm-btn" onclick={() => saveEdit(i)}>
+                <Icon name="check" size={15} strokeWidth={2.5} />
+                Guardar
+              </button>
             </div>
           {:else}
             <button class="bs-custom-info" onclick={() => selectCustom(server)}>
               <span class="bs-custom-label">{server.label}</span>
-              <span class="bs-custom-url">{server.url}</span>
+              <span class="bs-custom-url">WS: {server.wsUrl}</span>
+              <span class="bs-custom-url">TCP: {server.tcpUrl}</span>
+              <span class="bs-custom-url">HTTP: {server.httpUrl}</span>
             </button>
             <button class="bs-icon-btn" onclick={() => startEdit(i)} title="Editar">
               <Icon name="edit" size={15} />
@@ -236,7 +246,17 @@
   }
   .bs-add-btn:hover { background: var(--bg-3); }
   .bs-add-form { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
-  .bs-add-row { display: flex; gap: 8px; }
+  .bs-add-confirm {
+    width: 100%; padding: 10px; margin-top: 4px; gap: 6px;
+  }
+  .bs-url-field {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .bs-url-prefix {
+    font-size: 12px; font-weight: 700; color: var(--text-3);
+    width: 36px; text-align: right; flex-shrink: 0;
+    font-family: monospace;
+  }
   .bs-input {
     flex: 1; padding: 10px 12px; border: 2px solid var(--border);
     border-radius: 10px; font-size: 14px; outline: none;
@@ -279,7 +299,6 @@
   .bs-icon-btn:hover { background: var(--bg); color: var(--text-2); }
   .bs-delete-btn:hover { color: var(--danger); background: rgba(255,59,48,0.1); }
   .bs-edit-form { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-  .bs-edit-row { display: flex; gap: 6px; }
   .bs-edit-input { font-size: 13px; }
   .bs-empty { font-size: 13px; color: var(--text-3); text-align: center; padding: 12px 0; }
 </style>

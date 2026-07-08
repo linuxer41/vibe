@@ -39,7 +39,7 @@
     max-width: 360px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
     animation: slideIn 0.3s ease-out;
-    border: 1px solid rgba(255,255,255,0.08);
+    border: 1px solid var(--border);
     backdrop-filter: blur(12px);
     pointer-events: auto;
   }

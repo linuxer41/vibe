@@ -1,12 +1,12 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import Icon from '$lib/icon/Icon.svelte';
   import { avatarUrl } from '$lib/helpers';
   import { user, socket, contacts, showToast } from '$lib/stores';
   import type { User, SharedNote } from '$lib/types';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
 
   let usr: User | null = $state(null);
   let sk: any = $state(null);
@@ -29,16 +29,16 @@
     });
   });
 
-  function loadContacts() {
-    sk?.emit('get_contacts', (list: User[]) => searchResults = list || []);
+  async function loadContacts() {
+    try { searchResults = await emit<User[]>('get_contacts') || []; } catch {}
   }
 
-  function searchUsers() {
+  async function searchUsers() {
     if (searchQuery.length < 2) {
       loadContacts();
       return;
     }
-    sk?.emit('search_users', { query: searchQuery }, (res: User[]) => searchResults = res || []);
+    try { searchResults = await emit<User[]>('search_users', { query: searchQuery }) || []; } catch {}
   }
 
   function selectUser(u: User) {
@@ -47,9 +47,10 @@
     loadNote(u.id);
   }
 
-  function loadNote(targetUserId: number) {
+  async function loadNote(targetUserId: number) {
     loading = true;
-    sk?.emit('get_note', { targetUserId }, (res: any) => {
+    try {
+      const res = await emit('get_note', { targetUserId });
       if (res?.note) {
         note = res.note;
         noteContent = res.note.content || '';
@@ -57,17 +58,18 @@
         note = null;
         noteContent = '';
       }
-      loading = false;
-    });
+    } catch { note = null; noteContent = ''; }
+    loading = false;
   }
 
-  function saveNote() {
+  async function saveNote() {
     if (!targetUser) return;
-    sk?.emit('save_note', { targetUserId: targetUser.id, content: noteContent }, (res: any) => {
+    try {
+      const res = await emit('save_note', { targetUserId: targetUser.id, content: noteContent });
       if (res?.ok) {
         note = { ...(note || { id: 0, chat_id: 0, title: '', content: noteContent, updated_by: usr?.id || 0, updated_at: new Date().toISOString() }), content: noteContent };
       }
-    });
+    } catch {}
   }
 
   function clearSelection() {
@@ -77,8 +79,7 @@
   }
 </script>
 
-<Page>
-  <Header title="Notas Compartidas" onback={() => goto('/profile')} />
+<HeaderLayout title="Notas Compartidas" showBack onBack={() => goto('/profile')}>
 
   <div class="notes-page">
     {#if !targetUser}
@@ -132,7 +133,7 @@
       </div>
     {/if}
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .notes-page { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
@@ -156,7 +157,7 @@
   .note-avatar { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
   .note-partner-name { font-size: 16px; font-weight: 600; color: var(--text); }
   .note-time { font-size: 11px; color: var(--text-3); white-space: nowrap; }
-  .note-textarea { flex: 1; min-height: 200px; padding: 16px; background: var(--bg-2); border: 2px solid rgba(255,255,255,0.08); border-radius: 16px; font-size: 15px; color: var(--text); outline: none; resize: none; font-family: inherit; line-height: 1.6; transition: border-color 0.2s; }
+  .note-textarea { flex: 1; min-height: 200px; padding: 16px; background: var(--bg-2); border: 2px solid var(--border); border-radius: 16px; font-size: 15px; color: var(--text); outline: none; resize: none; font-family: inherit; line-height: 1.6; transition: border-color 0.2s; }
   .note-textarea:focus { border-color: var(--accent); }
   .note-textarea::placeholder { color: var(--text-3); }
   .note-hint { text-align: center; font-size: 11px; color: var(--text-3); margin-top: 12px; }

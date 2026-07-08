@@ -1,24 +1,28 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import Icon from '$lib/icon/Icon.svelte';
+  import type { IconName } from '$lib/icon/icons';
   import { avatarUrl } from '$lib/helpers';
-  import { socket, contacts, searchQuery, searchResults, showNewChat } from '$lib/stores';
+  import { contacts, searchQuery, searchResults, showNewChat } from '$lib/stores';
   import type { User } from '$lib/types';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
 
-  let sk: any = $state(null);
-  socket.subscribe((v) => sk = v);
-
-  function search() {
+  async function search() {
     const q = $state.snapshot(searchQuery) as string;
     if (q.length < 2) { searchResults.set([]); return; }
-    sk?.emit('search_users', { query: q }, (res: User[]) => searchResults.set(res));
+    try {
+      const res = await emit<User[]>('search_users', { query: q });
+      searchResults.set(res);
+    } catch {}
   }
 
   function addContact(contactId: number) {
-    sk?.emit('add_contact', { contactId }, () => {});
+    emit('add_contact', { contactId });
   }
 </script>
 
+<HeaderLayout title="Contactos">
 <div class="contacts-view">
   <div class="search-bar">
     <Icon name="search" size={16} />
@@ -57,6 +61,7 @@
     {/if}
   {/if}
 </div>
+</HeaderLayout>
 
 <style>
   .contacts-view { flex: 1; overflow-y: auto; }

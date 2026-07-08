@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import Icon from '$lib/icon/Icon.svelte';
+  import type { IconName } from '$lib/icon/icons';
 
   interface Action {
     label: string;
@@ -76,7 +77,7 @@
   @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
   .modal-content {
     background: var(--bg-2); border-radius: 16px;
-    width: 100%; max-width: 400px; max-height: 80dvh;
+    width: 100%; max-width: 400px; max-height: 80%;
     display: flex; flex-direction: column;
     box-shadow: 0 8px 40px var(--shadow);
     animation: scaleIn 0.2s ease-out;

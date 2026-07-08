@@ -1,16 +1,16 @@
 <script lang="ts">
+  import MinimalLayout from '$lib/layouts/MinimalLayout.svelte';
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { avatarUrl, mediaUrl } from '$lib/helpers';
-  import { user, socket, showToast } from '$lib/stores';
-  import { typedSocket } from '$lib/socket-types';
+  import { user, showToast } from '$lib/stores';
+  import { emit } from '$lib/socket';
   import type { User, Post } from '$lib/types';
   import Icon from '$lib/icon/Icon.svelte';
+  import type { IconName } from '$lib/icon/icons';
 
   let usr: User | null = $state(null);
-  let sk: ReturnType<typeof typedSocket> | null = $state(null);
   user.subscribe((v) => usr = v);
-  socket.subscribe((v) => sk = v);
 
   let posts: Post[] = $state([]);
   let currentIndex = $state(0);
@@ -50,13 +50,12 @@
   function onPostVisible(el: HTMLElement, idx: number) {
     const post = posts[idx];
     if (!post) return;
-    sk?.emit('record_interaction', { postId: post.id, type: 'view' });
+    emit('record_interaction', { postId: post.id, type: 'view' });
     if (visibleTimer) clearTimeout(visibleTimer);
     visibleTimer = window.setTimeout(() => {
-      sk?.emit('record_interaction', { postId: post.id, type: 'dwell', weight: 10 });
+      emit('record_interaction', { postId: post.id, type: 'dwell', weight: 10 });
       visibleTimer = null;
     }, 3000);
-    // Auto-play video
     const video = el.querySelector('video');
     if (video) {
       video.play().catch(() => {});
@@ -67,14 +66,13 @@
   async function loadMore() {
     if (loading) return;
     loading = true;
-    sk?.emit('get_recommended_posts', { limit: 5, cursor: posts.length > 0 ? posts[posts.length - 1].created_at : null }, (list: Post[]) => {
-      if (list.length) {
-        posts = [...posts, ...list];
-      } else if (posts.length === 0) {
-        showToast('No hay contenido recomendado');
-      }
-      loading = false;
-    });
+    const list = await emit<Post[]>('get_recommended_posts', { limit: 5, cursor: posts.length > 0 ? posts[posts.length - 1].created_at : null });
+    if (list.length) {
+      posts = [...posts, ...list];
+    } else if (posts.length === 0) {
+      showToast('No hay contenido recomendado');
+    }
+    loading = false;
   }
 
   function handleScroll() {
@@ -85,34 +83,31 @@
     }
   }
 
-  function toggleLike(post: Post) {
+  async function toggleLike(post: Post) {
     const wasLiked = likedPosts.has(post.id);
     if (wasLiked) {
       likedPosts.delete(post.id);
       likedPosts = likedPosts;
-      sk?.emit('unlike_post', { postId: post.id });
+      emit('unlike_post', { postId: post.id });
       if (post.likes_count > 0) post.likes_count--;
     } else {
       likedPosts.add(post.id);
       likedPosts = likedPosts;
-      sk?.emit('like_post', { postId: post.id }, (res: any) => {
-        if (res?.ok) post.likes_count++;
-      });
-      sk?.emit('record_interaction', { postId: post.id, type: 'like' });
+      const res = await emit('like_post', { postId: post.id });
+      if (res?.ok) post.likes_count++;
+      emit('record_interaction', { postId: post.id, type: 'like' });
     }
   }
 
-  function handleDoubleTap(e: MouseEvent | TouchEvent, post: Post) {
+  async function handleDoubleTap(e: MouseEvent | TouchEvent, post: Post) {
     const now = Date.now();
     if (now - lastLikeTap < 400) {
       if (!likedPosts.has(post.id)) {
         likedPosts.add(post.id);
         likedPosts = likedPosts;
-        sk?.emit('like_post', { postId: post.id }, (res: any) => {
-          if (res?.ok) post.likes_count++;
-        });
-        sk?.emit('record_interaction', { postId: post.id, type: 'like' });
-        // Show heart animation
+        const res = await emit('like_post', { postId: post.id });
+        if (res?.ok) post.likes_count++;
+        emit('record_interaction', { postId: post.id, type: 'like' });
         const heart = (e.currentTarget as HTMLElement).querySelector('.double-tap-heart');
         if (heart) {
           heart.classList.remove('heart-anim');
@@ -125,12 +120,12 @@
   }
 
   function goPost(post: Post) {
-    sk?.emit('record_interaction', { postId: post.id, type: 'comment' });
+    emit('record_interaction', { postId: post.id, type: 'comment' });
     showToast('Comentarios pronto');
   }
 
   function sharePost(post: Post) {
-    sk?.emit('record_interaction', { postId: post.id, type: 'share' });
+    emit('record_interaction', { postId: post.id, type: 'share' });
     import('$lib/platform').then(({ shareContent }) => {
       shareContent({ title: 'Vibe', text: post.text || '' });
     });
@@ -138,6 +133,7 @@
   }
 </script>
 
+<MinimalLayout>
 <div class="fyp-container" bind:this={containerEl} onscroll={handleScroll}>
   {#each posts as post, i (post.id)}
     <div class="fyp-card" data-index={i} onclick={(e) => handleDoubleTap(e, post)}>
@@ -157,7 +153,7 @@
 
       <div class="fyp-overlay">
         <div class="fyp-user-row">
-          <img src={avatarUrl(post.user_id)} alt="" class="fyp-avatar" />
+          <img src={avatarUrl(post.user_id, post.avatar)} alt="" class="fyp-avatar" />
           <span class="fyp-name">{post.display_name || post.username}</span>
         </div>
         {#if post.text}
@@ -187,6 +183,7 @@
     </div>
   {/if}
 </div>
+</MinimalLayout>
 
 <style>
   .fyp-container {
@@ -196,7 +193,7 @@
     -webkit-overflow-scrolling: touch;
   }
   .fyp-card {
-    height: 100dvh; width: 100%;
+    height: 100%; width: 100%;
     scroll-snap-align: start;
     position: relative; overflow: hidden;
     background: #111; display: flex; align-items: center; justify-content: center;

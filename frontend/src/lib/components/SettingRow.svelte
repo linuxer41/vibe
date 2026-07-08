@@ -35,17 +35,18 @@
 <style>
   .row {
     display: flex; align-items: center; gap: 14px;
-    padding: 14px 16px;
+    padding: 16px 18px;
     border-bottom: 1px solid var(--border-2);
     cursor: pointer; transition: background 0.15s;
   }
+  .row:last-child { border-bottom: none; }
   .row:hover { background: rgba(255,255,255,0.03); }
   .row:active { background: rgba(255,255,255,0.06); }
   .row-icon {
-    width: 20px; display: flex; justify-content: center; flex-shrink: 0;
+    width: 22px; display: flex; justify-content: center; flex-shrink: 0;
   }
   .row-info { flex: 1; min-width: 0; }
   .row-label { display: block; font-size: 15px; color: var(--text); }
-  .row-desc { display: block; font-size: 13px; color: var(--text-3); margin-top: 2px; line-height: 1.4; }
+  .row-desc { display: block; font-size: 12px; color: var(--text-3); margin-top: 3px; line-height: 1.4; }
   .row-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 </style>

@@ -7,6 +7,7 @@ export interface User {
   bio?: string;
   online?: boolean;
   country_code?: string;
+  last_seen_at?: string;
 }
 
 export interface Chat {
@@ -16,6 +17,8 @@ export interface Chat {
   avatar: string;
   last_message?: string;
   last_message_time?: string;
+  last_sender_id?: number;
+  last_message_status?: string;
   members?: User[];
   unread?: number;
   pinned?: number;
@@ -28,10 +31,12 @@ export interface Message {
   sender_name: string;
   sender_avatar: string;
   text: string;
-  type: 'text' | 'image' | 'system';
+  type: 'text' | 'image' | 'system' | 'audio' | 'video' | 'document';
   created_at: string;
   reply_to_id?: number;
   forwarded?: number;
+  status?: 'sent' | 'delivered' | 'read';
+  edited_at?: string;
 }
 
 export interface Post {

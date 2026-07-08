@@ -290,10 +290,6 @@ export const ICONS: Record<string, IconVariant> = {
     outline: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     filled: '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>'
   },
-  filter: {
-    outline: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>',
-    filled: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>'
-  },
   cast: {
     outline: '<path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><line x1="2" y1="20" x2="2.01" y2="20"/>',
     filled: '<path d="M2 16.1A5 5 0 0 1 5.9 20M2 12.05A9 9 0 0 1 9.95 20M2 8V6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-6"/><line x1="2" y1="20" x2="2.01" y2="20"/>'
@@ -314,10 +310,6 @@ export const ICONS: Record<string, IconVariant> = {
     outline: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>',
     filled: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>'
   },
-  music: {
-    outline: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>',
-    filled: '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'
-  },
   type: {
     outline: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>',
     filled: '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>'
@@ -333,5 +325,25 @@ export const ICONS: Record<string, IconVariant> = {
   filter: {
     outline: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/><path d="M8 3h12"/>',
     filled: '<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/><path d="M8 3h12"/>'
+  },
+  shield: {
+    outline: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    filled: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>'
+  },
+  bookmark: {
+    outline: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+    filled: '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>'
+  },
+  database: {
+    outline: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 3.34 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 3.34 3 9 3s9-1.34 9-3"/>',
+    filled: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 3.34 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 3.34 3 9 3s9-1.34 9-3"/>'
+  },
+  'wifi-off': {
+    outline: '<line x1="2" y1="2" x2="22" y2="22"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c2.53 0 4.86.88 6.69 2.35"/><circle cx="12" cy="18" r="1"/>',
+    filled: '<line x1="2" y1="2" x2="22" y2="22"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c2.53 0 4.86.88 6.69 2.35"/><circle cx="12" cy="18" r="1"/>'
+  },
+  'refresh-cw': {
+    outline: '<path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+    filled: '<path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>'
   }
 };

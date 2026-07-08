@@ -1,16 +1,15 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { avatarUrl } from '$lib/helpers';
   import { user, socket, chats, watchSession, showToast } from '$lib/stores';
-  import { typedSocket } from '$lib/socket-types';
   import type { User, WatchSession } from '$lib/types';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
   import Icon from '$lib/icon/Icon.svelte';
 
   let usr: User | null = $state(null);
-  let sk: ReturnType<typeof typedSocket> | null = $state(null);
+  let sk: any = $state(null);
   let cl = $state<any[]>([]);
   let session: WatchSession | null = $state(null);
 
@@ -61,12 +60,13 @@
     }
   }
 
-  function createSession() {
+  async function createSession() {
     if (!videoUrl || !selectedChatId) {
       showToast('Completa todos los campos');
       return;
     }
-    sk?.emit('create_watch_session', { chatId: parseInt(selectedChatId), videoUrl }, (res: any) => {
+    try {
+      const res = await emit('create_watch_session', { chatId: parseInt(selectedChatId), videoUrl });
       if (res?.ok) {
         session = res.session;
         watchSession.set(res.session);
@@ -77,13 +77,13 @@
       } else {
         showToast(res?.error || 'Error al crear sesión', 'error');
       }
-    });
+    } catch { showToast('Error al crear sesión', 'error'); }
   }
 
   function togglePlay() {
     if (!session) return;
     isPlaying = !isPlaying;
-    sk?.emit('sync_watch', {
+    emit('sync_watch', {
       sessionId: session.id,
       playbackTime,
       isPlaying: isPlaying ? 1 : 0
@@ -99,16 +99,17 @@
     if (!session) return;
     const target = e.target as HTMLInputElement;
     playbackTime = parseInt(target.value);
-    sk?.emit('sync_watch', {
+    emit('sync_watch', {
       sessionId: session.id,
       playbackTime,
       isPlaying: isPlaying ? 1 : 0
     });
   }
 
-  function refreshSession() {
+  async function refreshSession() {
     if (!session) return;
-    sk?.emit('get_watch_session', { sessionId: session.id }, (res: any) => {
+    try {
+      const res = await emit('get_watch_session', { sessionId: session.id });
       if (res?.session) {
         session = res.session;
         watchSession.set(res.session);
@@ -116,7 +117,7 @@
         isPlaying = !!res.session.playing;
         videoUrl = res.session.video_url || videoUrl;
       }
-    });
+    } catch {}
   }
 
   function leaveSession() {
@@ -134,8 +135,7 @@
   }
 </script>
 
-<Page>
-  <Header title="Watch Together" onback={() => goto('/profile')} />
+<HeaderLayout title="Watch Together" showBack onBack={() => goto('/profile')}>
 
   <div class="watch-page">
     {#if !session}
@@ -220,7 +220,7 @@
       </div>
     {/if}
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .watch-page { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
@@ -228,7 +228,7 @@
   .section-card { padding: 20px; background: var(--bg-2); border-radius: 16px; }
   .section-card h3 { font-size: 18px; font-weight: 700; color: var(--text); margin: 0 0 4px; }
   .section-desc { font-size: 13px; color: var(--text-3); margin-bottom: 20px; }
-  .modal-input { width: 100%; padding: 14px 16px; border: 2px solid rgba(255,255,255,0.08); border-radius: 12px; font-size: 15px; outline: none; background: var(--bg-3); color: var(--text); margin-bottom: 12px; box-sizing: border-box; transition: border-color 0.2s; }
+  .modal-input { width: 100%; padding: 14px 16px; border: 2px solid var(--border); border-radius: 12px; font-size: 15px; outline: none; background: var(--bg-3); color: var(--text); margin-bottom: 12px; box-sizing: border-box; transition: border-color 0.2s; }
   .modal-input:focus { border-color: var(--accent); }
   .modal-input::placeholder { color: var(--text-3); }
   .modal-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; background: var(--accent); color: #000; font-weight: 700; border: none; border-radius: 12px; font-size: 15px; cursor: pointer; transition: background 0.2s; }

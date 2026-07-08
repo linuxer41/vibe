@@ -1,16 +1,15 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { loadPosts, uploadViaSocket } from '$lib/helpers';
-  import { user, socket, showToast } from '$lib/stores';
-  import { typedSocket } from '$lib/socket-types';
+  import { user, showToast } from '$lib/stores';
   import type { User } from '$lib/types';
   import Icon from '$lib/icon/Icon.svelte';
+  import MinimalLayout from '$lib/layouts/MinimalLayout.svelte';
 
   let usr: User | null = $state(null);
-  let sk: ReturnType<typeof typedSocket> | null = $state(null);
   user.subscribe((v) => usr = v);
-  socket.subscribe((v) => sk = v);
 
   let caption = $state('');
   let publishing = $state(false);
@@ -29,7 +28,6 @@
   });
 
   async function publish() {
-    if (!sk) { showToast('Sin conexión'); return; }
     if (!caption.trim() && !imgDataUrl && !vidDataUrl) { showToast('Escribe algo o agrega un medio'); return; }
     publishing = true;
     showToast('Publicando...');
@@ -40,31 +38,31 @@
         const raw = atob(imgDataUrl.split(',')[1] || '');
         const buf = new Uint8Array(raw.length);
         for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
-        const r = await uploadViaSocket(sk!, { name: 'post.jpg', type: 'image/jpeg', data: buf.buffer }, () => {});
+        const r = await uploadViaSocket(null as any, { name: 'post.jpg', type: 'image/jpeg', data: buf.buffer }, () => {});
         if (r?.ok && r.url) { mediaUrl = r.url; mediaType = 'image'; }
         else { showToast('Error al subir imagen'); publishing = false; return; }
       } else if (vidDataUrl) {
         const resp = await fetch(vidDataUrl);
         const blob = await resp.blob();
-        const r = await uploadViaSocket(sk!, { name: 'post.webm', type: 'video/webm', data: await blob.arrayBuffer() }, () => {});
+        const r = await uploadViaSocket(null as any, { name: 'post.webm', type: 'video/webm', data: await blob.arrayBuffer() }, () => {});
         if (r?.ok && r.url) { mediaUrl = r.url; mediaType = 'video'; }
         else { showToast('Error al subir video'); publishing = false; return; }
       }
-      sk.emit('create_post', { text: caption, media: mediaUrl, mediaType }, (res: any) => {
-        if (res?.ok) {
-          caption = '';
-          loadPosts();
-          showToast(mediaType === 'video' ? 'Video publicado' : 'Post publicado');
-          goto('/feed', { noScroll: true });
-        } else {
-          showToast('Error al publicar');
-          publishing = false;
-        }
-      });
+      const res = await emit('create_post', { text: caption, media: mediaUrl, mediaType });
+      if (res?.ok) {
+        caption = '';
+        loadPosts();
+        showToast(mediaType === 'video' ? 'Video publicado' : 'Post publicado');
+        goto('/feed', { noScroll: true });
+      } else {
+        showToast('Error al publicar');
+        publishing = false;
+      }
     } catch { showToast('Error al publicar'); publishing = false; }
   }
 </script>
 
+<MinimalLayout>
 <div class="post-create">
   <div class="create-header">
     <button class="back-btn" onclick={() => goto('/camera', { noScroll: true })}>
@@ -99,6 +97,7 @@
     </button>
   </div>
 </div>
+</MinimalLayout>
 
 <style>
   .post-create {

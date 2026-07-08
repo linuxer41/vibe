@@ -1,12 +1,12 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
   import Toggle from '$lib/components/Toggle.svelte';
   import { passcodeSettings } from '$lib/stores';
   import Icon from '$lib/icon/Icon.svelte';
+  import type { IconName } from '$lib/icon/icons';
 
   let ps = $state({ enabled: false, passcodeHash: '', timeout: 1 });
   passcodeSettings.subscribe((v) => ps = v);
@@ -73,8 +73,7 @@
   }
 </script>
 
-<Page>
-  <Header title="Bloqueo con PIN" onback={() => goto('/settings/security')} />
+<HeaderLayout title="Bloqueo con PIN" showBack onBack={() => goto('/settings/security')}>
   <div class="content">
     {#if ps.enabled || step === 'enabled'}
       <div class="status-badge active">
@@ -170,7 +169,7 @@
       <p class="msg success">{success}</p>
     {/if}
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .content { flex: 1; overflow-y: auto; padding-bottom: 16px; }
@@ -221,8 +220,8 @@
     align-items: center; justify-content: center;
     transition: background 0.15s;
   }
-  .numpad-key:hover { background: #333; }
-  .numpad-key:active { background: #444; }
+  .numpad-key:hover { background: color-mix(in srgb, var(--bg-3), var(--text) 12%); }
+  .numpad-key:active { background: color-mix(in srgb, var(--bg-3), var(--text) 25%); }
   .msg { text-align: center; font-size: 13px; padding: 8px 16px; }
   .msg.error { color: var(--danger); }
   .msg.success { color: var(--accent); }

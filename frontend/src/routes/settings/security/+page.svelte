@@ -1,32 +1,42 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
   import Toggle from '$lib/components/Toggle.svelte';
-  import { socket, twoStepStatus, sessions, blockedUsers, passcodeSettings } from '$lib/stores';
+  import { twoStepStatus, sessions, blockedUsers, passcodeSettings } from '$lib/stores';
   import Icon from '$lib/icon/Icon.svelte';
 
-  let sk: any = $state(null);
   let ts: any = $state({ enabled: 0, hint: '' });
   let ps: any = $state({ enabled: false });
 
-  socket.subscribe((v) => sk = v);
   twoStepStatus.subscribe((v) => ts = v);
   passcodeSettings.subscribe((v) => ps = v);
 
   onMount(() => {
-    sk?.emit('get_two_step_status', (res: any) => twoStepStatus.set(res));
-    sk?.emit('get_sessions', (res: any) => sessions.set(res));
-    sk?.emit('get_blocked_users', (res: any) => blockedUsers.set(res));
+    loadSettings();
   });
+
+  async function loadSettings() {
+    try {
+      const tsRes = await emit('get_two_step_status');
+      if (tsRes) twoStepStatus.set(tsRes);
+    } catch {}
+    try {
+      const sRes = await emit('get_sessions');
+      if (sRes) sessions.set(sRes);
+    } catch {}
+    try {
+      const bRes = await emit('get_blocked_users');
+      if (bRes) blockedUsers.set(bRes);
+    } catch {}
+  }
 </script>
 
-<Page>
-  <Header title="Seguridad" onback={() => goto('/settings')} />
+<HeaderLayout title="Seguridad" showBack onBack={() => goto('/settings')}>
   <div class="content">
     <SettingSection label="Cifrado">
       <SettingRow label="Cifrado de extremo a extremo" desc="Tus chats están protegidos con cifrado de extremo a extremo.">
@@ -71,7 +81,7 @@
       </SettingRow>
     </SettingSection>
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .content { flex: 1; overflow-y: auto; }

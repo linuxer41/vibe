@@ -8,7 +8,7 @@ services:
       POSTGRES_DB: vibe
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # - ./backend/db:/docker-entrypoint-initdb.d
+      # - ./backend-node/db:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U linuxer -d vibe"]
       interval: 5s
@@ -28,7 +28,7 @@ services:
       timeout: 3s
       retries: 10
     ports:
-      - "6379:6379"
+      - "9615:6379"
 
   storage-server:
     image: ghcr.io/linuxer41/vibe-storage-server:latest
@@ -45,7 +45,31 @@ services:
       timeout: 3s
       retries: 5
 
-  backend:
+  kafka:
+    image: apache/kafka:latest
+    restart: unless-stopped
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://vibe-app.iathings.com:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: "3"
+      KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+    volumes:
+      - kafkadata:/bitnami/kafka
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "9092:9092"
+
+  backend-node:
     image: ghcr.io/linuxer41/vibe-backend:latest
     pull_policy: always
     restart: unless-stopped
@@ -54,12 +78,15 @@ services:
         condition: service_healthy
       valkey:
         condition: service_healthy
+      kafka:
+        condition: service_started
     environment:
       DATABASE_URL: postgres://linuxer:12345678@postgres:5432/vibe
       VALKEY_URL: redis://valkey:6379
-      STORAGE_URL: http://storage-server:3002
+      KAFKA_BROKER: kafka:9092
       PORT: "3000"
       NODE_ENV: production
+      STORAGE_URL: http://storage-server:3002
     # ports:
     #   - "3000:3000"
 
@@ -75,8 +102,8 @@ services:
     environment:
       DATABASE_URL: postgres://linuxer:12345678@postgres:5432/vibe
       VALKEY_URL: redis://valkey:6379
-      STORAGE_URL: http://storage-server:3002
       PORT: "3001"
+      STORAGE_URL: http://storage-server:3002
       RUST_LOG: info
     # ports:
     #   - "3001:3001"
@@ -86,7 +113,7 @@ services:
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      - backend
+      - backend-node
     # ports:
     #   - "5173:80"
 
@@ -95,12 +122,13 @@ services:
     pull_policy: always
     restart: unless-stopped
     depends_on:
-      - backend
+      - backend-node
     # ports:
     #   - "4173:4173"
 
 volumes:
   pgdata:
   valkeydata:
+  kafkadata:
   media:
   cache:

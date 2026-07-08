@@ -4,6 +4,7 @@
   import { showToast } from '$lib/stores';
   import type { User } from '$lib/types';
   import Icon from '$lib/icon/Icon.svelte';
+  import type { IconName } from '$lib/icon/icons';
 
   let { sk, usr, onclose, onpost, onstory }: {
     sk: any;
@@ -360,7 +361,7 @@
     transition: transform 0.3s ease-out;
   }
   .create-panel {
-    width: 100vw; flex-shrink: 0;
+    width: 100%; flex-shrink: 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
   .live-preview-placeholder { display: flex; flex-direction: column; align-items: center; gap: 16px; }

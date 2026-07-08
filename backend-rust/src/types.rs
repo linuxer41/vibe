@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tokio_postgres::Row;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct User {
     pub id: i64,
     pub phone: String,
@@ -59,7 +59,9 @@ pub struct Message {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reply_to_id: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub forwarded: Option<i64>,
+    pub forwarded: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

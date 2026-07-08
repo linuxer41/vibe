@@ -3,11 +3,11 @@ setlocal EnableExtensions
 
 set "ROOT=%~dp0"
 
-if exist "%ROOT%backend\.env.example" (
-  copy /Y "%ROOT%backend\.env.example" "%ROOT%backend\.env" >nul
-  echo [env] backend/.env listo
+if exist "%ROOT%backend-node\.env.example" (
+  copy /Y "%ROOT%backend-node\.env.example" "%ROOT%backend-node\.env" >nul
+  echo [env] backend-node/.env listo
 ) else (
-  echo [env] backend/.env.example no encontrado
+  echo [env] backend-node/.env.example no encontrado
 )
 
 if exist "%ROOT%backend-rust\.env.example" (
@@ -22,6 +22,13 @@ if exist "%ROOT%frontend\.env.example" (
   echo [env] frontend/.env listo
 ) else (
   echo [env] frontend/.env.example no encontrado
+)
+
+if exist "%ROOT%backend-go\.env.example" (
+  copy /Y "%ROOT%backend-go\.env.example" "%ROOT%backend-go\.env" >nul
+  echo [env] backend-go/.env listo
+) else (
+  echo [env] backend-go/.env.example no encontrado
 )
 
 echo [env] proceso terminado

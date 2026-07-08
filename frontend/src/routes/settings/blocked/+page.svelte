@@ -1,31 +1,35 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
-  import { socket, blockedUsers } from '$lib/stores';
+  import { blockedUsers } from '$lib/stores';
   import { avatarUrl } from '$lib/helpers';
   import type { User } from '$lib/types';
   import Icon from '$lib/icon/Icon.svelte';
 
-  let sk: any = $state(null);
-  socket.subscribe((v) => sk = v);
-
   onMount(() => {
-    sk?.emit('get_blocked_users', (res: any) => blockedUsers.set(res));
+    loadBlocked();
   });
 
-  function unblock(u: User) {
-    sk?.emit('unblock_user', { userId: u.id }, () => {
+  async function loadBlocked() {
+    try {
+      const res = await emit('get_blocked_users');
+      if (res) blockedUsers.set(res);
+    } catch {}
+  }
+
+  async function unblock(u: User) {
+    try {
+      await emit('unblock_user', { userId: u.id });
       blockedUsers.update((list) => list.filter((b) => b.id !== u.id));
-    });
+    } catch {}
   }
 </script>
 
-<Page>
-  <Header title="Contactos bloqueados" onback={() => goto('/settings/security')} />
+<HeaderLayout title="Contactos bloqueados" showBack onBack={() => goto('/settings/security')}>
   <div class="content">
     {#if $blockedUsers.length === 0}
       <div class="empty">
@@ -47,7 +51,7 @@
       </SettingSection>
     {/if}
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .content { flex: 1; overflow-y: auto; }
@@ -70,5 +74,5 @@
     font-weight: 600; cursor: pointer; transition: all 0.2s;
     white-space: nowrap;
   }
-  .unblock-btn:hover { background: rgba(34,197,94,0.1); }
+  .unblock-btn:hover { background: rgba(var(--accent-rgb),0.1); }
 </style>

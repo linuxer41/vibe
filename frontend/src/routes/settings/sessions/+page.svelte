@@ -1,31 +1,37 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
   import Icon from '$lib/icon/Icon.svelte';
-  import { socket, sessions } from '$lib/stores';
+  import { sessions } from '$lib/stores';
   import type { Session } from '$lib/types';
 
-  let sk: any = $state(null);
-  socket.subscribe((v) => sk = v);
-
   onMount(() => {
-    sk?.emit('get_sessions', (res: any) => sessions.set(res));
+    loadSessions();
   });
 
-  function terminate(sessionId: number) {
-    sk?.emit('terminate_session', { sessionId }, () => {
-      sessions.update((list) => list.filter((s) => s.id !== sessionId));
-    });
+  async function loadSessions() {
+    try {
+      const res = await emit('get_sessions');
+      if (res) sessions.set(res);
+    } catch {}
   }
 
-  function terminateAll() {
-    sk?.emit('terminate_other_sessions', {}, () => {
-      sk?.emit('get_sessions', (res: any) => sessions.set(res));
-    });
+  async function terminate(sessionId: number) {
+    try {
+      await emit('terminate_session', { sessionId });
+      sessions.update((list) => list.filter((s) => s.id !== sessionId));
+    } catch {}
+  }
+
+  async function terminateAll() {
+    try {
+      await emit('terminate_other_sessions');
+      await loadSessions();
+    } catch {}
   }
 
   function formatDate(d: string) {
@@ -48,8 +54,7 @@
   }
 </script>
 
-<Page>
-  <Header title="Dispositivos" onback={() => goto('/settings/security')} />
+<HeaderLayout title="Dispositivos" showBack onBack={() => goto('/settings/security')}>
   <div class="content">
     {#if $sessions.length > 1}
       <button class="terminate-all" onclick={terminateAll}>
@@ -85,7 +90,7 @@
       Puedes cerrar sesión en cualquier dispositivo. Las sesiones aparecen ordenadas por actividad reciente.
     </div>
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .content { flex: 1; overflow-y: auto; }

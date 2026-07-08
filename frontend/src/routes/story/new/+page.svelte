@@ -1,16 +1,15 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';
   import { uploadViaSocket } from '$lib/helpers';
-  import { user, socket, showToast } from '$lib/stores';
-  import { typedSocket } from '$lib/socket-types';
+  import { user, showToast } from '$lib/stores';
   import type { User } from '$lib/types';
   import Icon from '$lib/icon/Icon.svelte';
+  import MinimalLayout from '$lib/layouts/MinimalLayout.svelte';
 
   let usr: User | null = $state(null);
-  let sk: ReturnType<typeof typedSocket> | null = $state(null);
   user.subscribe((v) => usr = v);
-  socket.subscribe((v) => sk = v);
 
   let publishing = $state(false);
   let mediaDataUrl = $state('');
@@ -26,7 +25,6 @@
   });
 
   async function publish() {
-    if (!sk) { showToast('Sin conexión'); return; }
     if (!mediaDataUrl) { showToast('No hay medio'); return; }
     publishing = true;
     showToast('Subiendo story...');
@@ -36,28 +34,28 @@
       if (isVideo) {
         const resp = await fetch(mediaDataUrl);
         const blob = await resp.blob();
-        const r = await uploadViaSocket(sk!, { name: 'story.webm', type: 'video/webm', data: await blob.arrayBuffer() }, () => {});
+        const r = await uploadViaSocket(null as any, { name: 'story.webm', type: 'video/webm', data: await blob.arrayBuffer() }, () => {});
         if (r?.ok && r.url) mediaUrl = r.url;
       } else {
         const raw = atob(mediaDataUrl.split(',')[1] || '');
         const buf = new Uint8Array(raw.length);
         for (let i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
-        const r = await uploadViaSocket(sk!, { name: 'story.jpg', type: 'image/jpeg', data: buf.buffer }, () => {});
+        const r = await uploadViaSocket(null as any, { name: 'story.jpg', type: 'image/jpeg', data: buf.buffer }, () => {});
         if (r?.ok && r.url) mediaUrl = r.url;
       }
       if (mediaUrl) {
-        sk.emit('create_story', { media: mediaUrl }, (res: any) => {
-          if (res?.ok) {
-            showToast('Story publicada');
-            goto('/feed', { noScroll: true });
-          } else { showToast('Error al crear story'); }
-          publishing = false;
-        });
+        const res = await emit('create_story', { media: mediaUrl });
+        if (res?.ok) {
+          showToast('Story publicada');
+          goto('/feed', { noScroll: true });
+        } else { showToast('Error al crear story'); }
+        publishing = false;
       } else { showToast('Error al subir'); publishing = false; }
     } catch { showToast('Error al crear story'); publishing = false; }
   }
 </script>
 
+<MinimalLayout>
 <div class="story-create">
   <div class="create-header">
     <button class="back-btn" onclick={() => goto('/camera', { noScroll: true })}>
@@ -90,6 +88,7 @@
     </button>
   </div>
 </div>
+</MinimalLayout>
 
 <style>
   .story-create {

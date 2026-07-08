@@ -196,8 +196,63 @@ pub async fn search_users(
     let client = pool.get().await?;
     let rows = client
         .query(
-            "SELECT id, phone, username, display_name, avatar FROM users WHERE phone LIKE $1 OR username LIKE $2 OR display_name LIKE $3 FETCH FIRST 20 ROWS ONLY",
+            "SELECT id, phone, username, display_name, avatar, bio, country_code FROM users WHERE phone LIKE $1 OR username LIKE $2 OR display_name LIKE $3 FETCH FIRST 20 ROWS ONLY",
             &[&like, &like, &like],
+        )
+        .await?;
+    Ok(rows.iter().map(|r| row_to_user(r)).collect())
+}
+
+pub async fn search_posts(
+    pool: &DbPool,
+    query: &str,
+) -> Result<Vec<Post>, Box<dyn std::error::Error + Send + Sync>> {
+    let like = format!("%{}%", query);
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "SELECT p.*, u.display_name, u.avatar,
+                (SELECT COUNT(*) FROM post_views WHERE post_id = p.id) as views
+             FROM posts p JOIN users u ON p.user_id = u.id
+             WHERE (p.text ILIKE $1 OR u.display_name ILIKE $2) AND p.expires_at > NOW()
+             ORDER BY p.created_at DESC FETCH FIRST 20 ROWS ONLY",
+            &[&like, &like],
+        )
+        .await?;
+    Ok(rows
+        .iter()
+        .map(|r| {
+            let created_at: chrono::NaiveDateTime = r.get("created_at");
+            let expires_at: Option<chrono::NaiveDateTime> = r.get("expires_at");
+            Post {
+                id: r.get("id"),
+                user_id: r.get("user_id"),
+                text: r.get("text"),
+                media: r.get("media"),
+                media_type: r.get("media_type"),
+                likes_count: r.get("likes_count"),
+                comments_count: r.get("comments_count"),
+                created_at: created_at.and_utc().to_rfc3339(),
+                expires_at: expires_at.map(|e| e.and_utc().to_rfc3339()),
+                display_name: r.get("display_name"),
+                avatar: r.get("avatar"),
+                views: r.get("views"),
+            }
+        })
+        .collect())
+}
+
+pub async fn get_suggested_users(
+    pool: &DbPool,
+    user_id: i64,
+) -> Result<Vec<User>, Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "SELECT id, phone, username, display_name, avatar, bio, country_code FROM users
+             WHERE id != $1 AND id NOT IN (SELECT contact_user_id FROM contacts WHERE user_id = $1)
+             ORDER BY id DESC FETCH FIRST 15 ROWS ONLY",
+            &[&user_id],
         )
         .await?;
     Ok(rows.iter().map(|r| row_to_user(r)).collect())
@@ -391,24 +446,69 @@ pub async fn get_chat_members(
     let client = pool.get().await?;
     let rows = client
         .query(
-            "SELECT u.id, u.phone, u.username, u.display_name, u.avatar, u.bio, u.country_code
-             FROM chat_members cm JOIN users u ON cm.user_id = u.id WHERE cm.chat_id = $1",
-            &[&chat_id],
-        )
-        .await?;
-    Ok(rows.iter().map(|r| row_to_user(r)).collect())
-}
+             "SELECT u.id, u.phone, u.username, u.display_name, u.avatar, u.bio, u.country_code
+              FROM chat_members cm JOIN users u ON cm.user_id = u.id WHERE cm.chat_id = $1",
+             &[&chat_id],
+         )
+         .await?;
+     Ok(rows.iter().map(|r| row_to_user(r)).collect())
+ }
 
-// --- MESSAGES ---
+ pub async fn get_chat_members_flat(
+     pool: &DbPool,
+     chat_id: i64,
+ ) -> Result<Vec<i64>, Box<dyn std::error::Error + Send + Sync>> {
+     let client = pool.get().await?;
+     let rows = client
+         .query("SELECT user_id FROM chat_members WHERE chat_id = $1", &[&chat_id])
+         .await?;
+    Ok(rows.iter().map(|r| r.get::<_, i64>("user_id")).collect())
+ }
 
-pub async fn add_message(
+ pub async fn get_user_chat(
+     pool: &DbPool,
+     chat_id: i64,
+     user_id: i64,
+ ) -> Result<Option<Chat>, Box<dyn std::error::Error + Send + Sync>> {
+     let client = pool.get().await?;
+     let rows = client
+         .query(
+             "SELECT c.id, c.type, c.name, c.avatar, c.created_at FROM chats c
+              JOIN chat_members cm ON c.id = cm.chat_id WHERE c.id = $1 AND cm.user_id = $2",
+             &[&chat_id, &user_id],
+         )
+         .await?;
+     if rows.is_empty() {
+         return Ok(None);
+     }
+     let row = &rows[0];
+    let created_at: Option<chrono::NaiveDateTime> = row.get("created_at");
+    let created_at_str = created_at.map(|t| t.format("%Y-%m-%dT%H:%M:%S%.fZ").to_string());
+    Ok(Some(Chat {
+        id: row.get("id"),
+        chat_type: row.get("type"),
+        name: row.get("name"),
+        avatar: row.get("avatar"),
+        created_at: created_at_str,
+        last_message: None,
+        last_message_time: None,
+        last_sender_id: None,
+        unread: None,
+        members: None,
+        pinned: None,
+    }))
+ }
+
+ // --- MESSAGES ---
+
+ pub async fn add_message(
     pool: &DbPool,
     chat_id: i64,
     sender_id: i64,
     text: &str,
     msg_type: &str,
     reply_to_id: Option<i64>,
-    forwarded: Option<i64>,
+    forwarded: Option<i32>,
 ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
     let msg_id = snowflake::generate();
     let client = pool.get().await?;
@@ -466,6 +566,7 @@ pub async fn get_messages(
                 created_at: created_at.and_utc().to_rfc3339(),
                 reply_to_id: r.get("reply_to_id"),
                 forwarded: r.get("forwarded"),
+                status: r.get("status"),
             }
         })
         .collect();
@@ -486,6 +587,51 @@ pub async fn mark_read(
         )
         .await;
     Ok(())
+}
+
+pub async fn update_message_status(
+    pool: &DbPool,
+    message_id: i64,
+    status: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    let _ = client
+        .execute(
+            "UPDATE messages SET status = $1 WHERE id = $2",
+            &[&status.to_string(), &message_id],
+        )
+        .await;
+    Ok(())
+}
+
+pub async fn get_message_by_id(
+    pool: &DbPool,
+    message_id: i64,
+) -> Result<Option<Message>, Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "SELECT m.*, u.display_name as sender_name, u.avatar as sender_avatar
+             FROM messages m JOIN users u ON m.sender_id = u.id WHERE m.id = $1",
+            &[&message_id],
+        )
+        .await?;
+    Ok(rows.first().map(|r| {
+        let created_at: chrono::NaiveDateTime = r.get("created_at");
+        Message {
+            id: r.get("id"),
+            chat_id: r.get("chat_id"),
+            sender_id: r.get("sender_id"),
+            sender_name: r.get("sender_name"),
+            sender_avatar: r.get("sender_avatar"),
+            text: r.get("text"),
+            msg_type: r.get("type"),
+            created_at: created_at.and_utc().to_rfc3339(),
+            reply_to_id: r.get("reply_to_id"),
+            forwarded: r.get("forwarded"),
+            status: r.get("status"),
+        }
+    }))
 }
 
 pub async fn search_messages(
@@ -520,6 +666,7 @@ pub async fn search_messages(
                 created_at: created_at.and_utc().to_rfc3339(),
                 reply_to_id: r.get("reply_to_id"),
                 forwarded: r.get("forwarded"),
+                status: r.get("status"),
             }
         })
         .collect();

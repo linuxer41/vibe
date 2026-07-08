@@ -1,18 +1,16 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
   import SettingSection from '$lib/components/SettingSection.svelte';
   import SettingRow from '$lib/components/SettingRow.svelte';
-  import { socket, twoStepStatus } from '$lib/stores';
+  import { twoStepStatus } from '$lib/stores';
   import Icon from '$lib/icon/Icon.svelte';
 
-  let sk: any = $state(null);
   let ts = $state({ enabled: 0, hint: '' });
 
-  socket.subscribe((v) => sk = v);
   twoStepStatus.subscribe((v) => ts = v);
 
   let password = $state('');
@@ -22,14 +20,22 @@
   let success = $state('');
 
   onMount(() => {
-    sk?.emit('get_two_step_status', (res: any) => twoStepStatus.set(res));
+    loadStatus();
   });
 
-  function enable() {
+  async function loadStatus() {
+    try {
+      const res = await emit('get_two_step_status');
+      if (res) twoStepStatus.set(res);
+    } catch {}
+  }
+
+  async function enable() {
     if (password.length < 4) { error = 'Mínimo 4 caracteres'; return; }
     if (password !== confirmPassword) { error = 'Las contraseñas no coinciden'; return; }
     error = '';
-    sk?.emit('set_two_step', { password, hint }, (res: any) => {
+    try {
+      const res = await emit('set_two_step', { password, hint });
       if (res.ok) {
         twoStepStatus.set({ enabled: 1, hint });
         success = 'Verificación en dos pasos activada';
@@ -37,11 +43,12 @@
       } else {
         error = res.error;
       }
-    });
+    } catch { error = 'Error del servidor'; }
   }
 
-  function disable() {
-    sk?.emit('disable_two_step', { password }, (res: any) => {
+  async function disable() {
+    try {
+      const res = await emit('disable_two_step', { password });
       if (res.ok) {
         twoStepStatus.set({ enabled: 0, hint: '' });
         password = '';
@@ -49,12 +56,11 @@
       } else {
         error = res.error;
       }
-    });
+    } catch { error = 'Error del servidor'; }
   }
 </script>
 
-<Page>
-  <Header title="Verificación en dos pasos" onback={() => goto('/settings/security')} />
+<HeaderLayout title="Verificación en dos pasos" showBack onBack={() => goto('/settings/security')}>
   <div class="content">
     {#if ts.enabled}
       <div class="status-badge active">
@@ -107,7 +113,7 @@
       <p class="msg success">{success}</p>
     {/if}
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .content { flex: 1; overflow-y: auto; padding: 0 0 16px; }
@@ -124,7 +130,7 @@
     font-size: 15px; outline: none; background: var(--bg-3); color: var(--text);
     transition: background 0.2s;
   }
-  .form-group input:focus { background: #333; }
+  .form-group input:focus { background: var(--bg-2); }
   .form-group input:disabled { opacity: 0.5; }
   .action-btn {
     width: calc(100% - 32px); margin: 16px; padding: 13px;

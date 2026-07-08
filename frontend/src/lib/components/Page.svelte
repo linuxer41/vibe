@@ -12,7 +12,7 @@
 
 <style>
   .page {
-    height: 100dvh; display: flex; flex-direction: column;
+    height: 100%; display: flex; flex-direction: column;
     background: var(--bg);
   }
 </style>

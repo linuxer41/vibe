@@ -5,8 +5,9 @@
 | Capa | Tecnología | Puerto |
 |---|---|---|
 | Frontend | SvelteKit + adapter-auto | 5173 |
-| Backend (Node.js) | Express + Socket.IO + pg | 3000 |
-| Backend (Rust) | Axum + socketioxide + tokio-postgres | 3001 |
+| Backend (Node.js) | Express + ws/tcp + pg (HTTP:2000, WS:3000, TCP:4000) | `backend-node/` |
+| Backend (Rust) | Axum + socketioxide + tokio-postgres (HTTP:2001, WS:3001, TCP:4001) | `backend-rust/` |
+| Backend (Go) | net/http + gorilla/websocket + pg (HTTP:2002, WS:3002, TCP:4002) | `backend-go/` |
 | DB | PostgreSQL | 5432 |
 | Cache/PubSub | Valkey (Redis) | 6379 |
 
@@ -227,6 +228,17 @@
 6. `006_stars_gifts.sql` — Estrellas en vibe_balance + live_gifts
 
 ---
+
+## Backend Go
+
+- Drop-in replacement del backend Node.js (mismos protocolos binarios)
+- HTTP Auth server en puerto 2002
+- WebSocket server en puerto 3002
+- TCP server en puerto 4002
+- FlatBuffers para serialización binaria (generados en `fb/`)
+- PostgreSQL vía `pgx`
+- Apache Kafka para mensajería cross-instance
+- Conexión manager centralizado (Map userID → sessions)
 
 ## Backend Rust (en desarrollo)
 

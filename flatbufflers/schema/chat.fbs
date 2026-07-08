@@ -1,0 +1,114 @@
+namespace Vibe.Chat;
+
+table SendMessageRequest {
+  chat_id: uint64;
+  text: string;
+  content_type: ushort;
+  reply_to_id: uint64;
+}
+
+table SendMessageResponse {
+  message_id: uint64;
+  created_at: uint32;
+}
+
+table Message {
+  id: uint64;
+  chat_id: uint64;
+  sender_id: uint64;
+  sender_name: string;
+  sender_avatar: string;
+  text: string;
+  content_type: ushort;
+  created_at: uint32;
+  status: ushort;
+  reply_to_id: uint64;
+  forwarded: ubyte;
+}
+
+table ChatItem {
+  id: uint64;
+  name: string;
+  avatar: string;
+  type: ubyte;
+  last_message: string;
+  last_message_time: uint32;
+  last_sender_id: uint64;
+  last_message_status: ushort;
+  unread: uint32;
+  pinned: bool;
+}
+
+table NewMessagePayload {
+  // Complete chat item data
+  chat_id: uint64;
+  chat_name: string;
+  chat_avatar: string;
+  chat_type: ubyte;
+  unread: uint32;
+  // The actual message
+  message: Message (required);
+}
+
+table GetChatsResponse {
+  chats: [ChatItem];
+}
+
+table GetMessagesRequest {
+  chat_id: uint64;
+  limit: ushort;
+  cursor: uint64;
+}
+
+table GetMessagesResponse {
+  messages: [Message];
+}
+
+table MarkReadRequest {
+  message_id: uint64;
+}
+
+table TypingPayload {
+  chat_id: uint64;
+  user_id: uint64;
+  name: string;
+}
+
+table MessageDeliveredPayload {
+  message_id: uint64;
+  sender_id: uint64;
+}
+
+table MessageStatusPayload {
+  message_id: uint64;
+  status: ushort;
+}
+
+table DeleteMessageRequest {
+  message_id: uint64;
+  chat_id: uint64;
+}
+
+table EditMessageRequest {
+  message_id: uint64;
+  chat_id: uint64;
+  text: string;
+}
+
+table CreatePrivateChatRequest {
+  contact_id: uint64;
+}
+
+table CreatePrivateChatResponse {
+  chat_id: uint64;
+}
+
+table CreateGroupRequest {
+  name: string;
+  member_ids: [uint64];
+}
+
+table CreateGroupResponse {
+  chat_id: uint64;
+  member_ids: [uint64];
+}

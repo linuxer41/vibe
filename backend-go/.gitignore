@@ -1,0 +1,4 @@
+.env
+tmp_upload/
+tmp_chunks/
+*.exe

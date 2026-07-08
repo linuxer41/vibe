@@ -1,27 +1,30 @@
 <script lang="ts">
+  import { emit } from '$lib/socket';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import Page from '$lib/components/Page.svelte';
-  import Header from '$lib/components/Header.svelte';
-  import { socket, notifications, showToast } from '$lib/stores';
+  import HeaderLayout from '$lib/layouts/HeaderLayout.svelte';
+  import type { IconName } from '$lib/icon/icons';
+  import { notifications, showToast } from '$lib/stores';
   import type { SmartNotification } from '$lib/types';
 
-  let sk: any = $state(null);
-  socket.subscribe((v) => sk = v);
-
   onMount(() => {
-    sk?.emit('get_notifications', (list: SmartNotification[]) => {
-      notifications.set(list);
-    });
+    loadNotifications();
   });
+
+  async function loadNotifications() {
+    try {
+      const list = await emit<SmartNotification[]>('get_notifications');
+      if (list) notifications.set(list);
+    } catch {}
+  }
 
   function markRead(n: SmartNotification) {
     if (n.read) return;
     notifications.update((list) =>
       list.map((x) => x.id === n.id ? { ...x, read: 1 } : x)
     );
-    sk?.emit('mark_notification_read', { id: n.id });
+    emit('mark_notification_read', { id: n.id });
   }
 
   function formatDate(iso: string) {
@@ -47,8 +50,7 @@
   }
 </script>
 
-<Page>
-  <Header title="Notificaciones" onback={() => goto('/settings')} />
+<HeaderLayout title="Notificaciones" showBack onBack={() => goto('/settings')}>
   <div class="content">
     {#if $notifications.length === 0}
       <div class="empty">
@@ -70,7 +72,7 @@
       {/each}
     {/if}
   </div>
-</Page>
+</HeaderLayout>
 
 <style>
   .content { flex: 1; overflow-y: auto; }

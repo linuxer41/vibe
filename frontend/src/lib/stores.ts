@@ -2,12 +2,12 @@ import { writable, derived } from 'svelte/store';
 import type { TypedSocket } from './socket-types';
 import type {
   User, Chat, Message, Post, Session, PrivacySettings, TwoStepStatus,
-  Channel, Community, Poll, Product, Order, Wishlist, FlashDeal,
+  Channel, ChannelPost, Community, Poll, Product, Order, Wishlist, FlashDeal,
   Meme, StickerPack, Sticker, VibeBalance, FocusSession, SmartNotification,
   SharedNote, GroupTask, WatchSession, Game, GameSession
 } from './types';
 
-export const socket = writable<TypedSocket | null>(null);
+export const socket = writable<any>(null);
 export const user = writable<User | null>(null);
 export const token = writable<string>('');
 export const authStep = writable<'loading' | 'phone' | 'verify' | 'setup' | 'main'>('loading');

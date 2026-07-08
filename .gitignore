@@ -7,7 +7,12 @@ __pycache__/
 *.log
 .DS_Store
 backend-rust/target/
-backend/uploads/
+backend-node/uploads/
+backend-node/tmp_upload/
+backend-node/tmp_chunks/
+backend-go/.env
+backend-go/tmp_upload/
+backend-go/tmp_chunks/
 storage-server/cache/
 frontend/.svelte-kit/
 frontend/build/

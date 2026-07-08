@@ -134,6 +134,37 @@ export function stopMediaStream(stream: MediaStream | null) {
   stream.getTracks().forEach((t) => t.stop());
 }
 
+// ── System Bars Styles ──
+
+async function getBarStyles(theme: 'dark' | 'light') {
+  return {
+    statusBarStyle: theme === 'dark' ? 'light' : 'dark',
+    navigationBarStyle: theme === 'dark' ? 'light' : 'dark',
+  };
+}
+
+export async function initSystemBars(theme: 'dark' | 'light'): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const styles = await getBarStyles(theme);
+    await invoke('plugin:system-bars-styles|set_style', styles);
+  } catch {
+    // not on Tauri or plugin unavailable
+  }
+}
+
+export async function applySystemBarsTheme(theme: 'dark' | 'light'): Promise<void> {
+  if (!isTauri()) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const styles = await getBarStyles(theme);
+    await invoke('plugin:system-bars-styles|set_style', styles);
+  } catch {
+    // not on Tauri or plugin unavailable
+  }
+}
+
 export function capturePhotoFromStream(
   stream: MediaStream,
   opts: { width?: number; height?: number; format?: string; quality?: number; mirror?: boolean } = {}

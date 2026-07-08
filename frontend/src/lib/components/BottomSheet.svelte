@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from '$lib/icon/Icon.svelte';
+  import type { IconName } from '$lib/icon/icons';
   let { show, onclose, title, children }: {
     show: boolean;
     onclose: () => void;
@@ -39,7 +40,7 @@
   .sheet {
     background: var(--bg-2); border-radius: 16px 16px 0 0;
     padding: 0 20px 24px; width: 100%; max-width: 430px;
-    height: 50dvh; display: flex; flex-direction: column;
+    height: 50%; display: flex; flex-direction: column;
     box-shadow: 0 -8px 32px var(--shadow);
     animation: slideUp 0.25s ease-out;
   }

@@ -1,0 +1,259 @@
+namespace Vibe;
+
+enum MessageType : ushort {
+  // System
+  Ping = 1,
+  Pong = 2,
+  Error = 3,
+
+  // Auth (256-272)
+  AuthSendCode = 257,
+  AuthSendCodeResp = 258,
+  AuthVerifyCode = 259,
+  AuthVerifyCodeResp = 260,
+  AuthRestore = 261,
+  AuthRestoreResp = 262,
+
+  // Chat (512-544)
+  ChatSend = 513,
+  ChatSendResp = 514,
+  ChatNewMessage = 515,
+  ChatGetChats = 516,
+  ChatGetChatsResp = 517,
+  ChatGetMessages = 518,
+  ChatGetMessagesResp = 519,
+  ChatMarkRead = 520,
+  ChatTyping = 521,
+  ChatStopTyping = 522,
+  ChatMessageDelivered = 523,
+  ChatMessageStatus = 524,
+  ChatDelete = 525,
+  ChatEdit = 526,
+  ChatForward = 527,
+  ChatPin = 528,
+  ChatCreatePrivate = 529,
+  ChatCreatePrivateResp = 530,
+  ChatCreateGroup = 531,
+  ChatCreateGroupResp = 532,
+  ChatNewChat = 533,
+
+  // Presence (768-784)
+  PresenceStatus = 769,
+
+  // Upload (1024-1056)
+  UploadStart = 1025,
+  UploadStartResp = 1026,
+  UploadChunk = 1027,
+  UploadChunkResp = 1028,
+  UploadCancel = 1029,
+
+  // Call / WebRTC (1280-1312)
+  CallStart = 1281,
+  CallStartResp = 1282,
+  CallAccept = 1283,
+  CallReject = 1284,
+  CallEnd = 1285,
+  CallIce = 1286,
+  CallGetHistory = 1287,
+  CallGetHistoryResp = 1288,
+  CallLog = 1289,
+
+  // Post / Feed (1536-1584)
+  PostCreate = 1537,
+  PostCreateResp = 1538,
+  PostGet = 1539,
+  PostGetResp = 1540,
+  PostLike = 1541,
+  PostComment = 1542,
+  PostNew = 1543,
+  PostGetRecommended = 1544,
+  PostGetRecommendedResp = 1545,
+  PostSearch = 1546,
+  PostSearchResp = 1547,
+  PostJoin = 1548,
+  PostLeave = 1549,
+
+  // Live (1792-1824)
+  LiveStart = 1793,
+  LiveEnd = 1794,
+  LiveGetActive = 1795,
+  LiveGetActiveResp = 1796,
+  LiveComment = 1797,
+  LiveNewComment = 1798,
+  LiveReaction = 1799,
+  LiveNewReaction = 1800,
+  LiveGift = 1801,
+  LiveNewGift = 1802,
+  LiveGetComments = 1803,
+  LiveGetCommentsResp = 1804,
+  LiveGetReactions = 1805,
+  LiveGetReactionsResp = 1806,
+  LiveGetGifts = 1807,
+  LiveGetGiftsResp = 1808,
+  LiveJoin = 1809,
+  LiveLeave = 1810,
+  LiveGetUserStars = 1811,
+  LiveGetUserStarsResp = 1812,
+
+  // Notification (2816-2848)
+  NotifNew = 2817,
+  NotifMarkRead = 2818,
+  NotifGetList = 2819,
+  NotifGetListResp = 2820,
+
+  // Profile (3072-3104)
+  ProfileUpdate = 3073,
+  ProfileUpdateResp = 3074,
+  ProfileGet = 3075,
+  ProfileGetResp = 3076,
+
+  // Contact (3328-3360)
+  ContactAdd = 3329,
+  ContactAddResp = 3330,
+  ContactGet = 3331,
+  ContactGetResp = 3332,
+  ContactStatus = 3333,
+  ContactSearch = 3334,
+  ContactSearchResp = 3335,
+  ContactGetSuggested = 3336,
+  ContactGetSuggestedResp = 3337,
+
+  // Game (3584-3616)
+  GameGetList = 3585,
+  GameGetListResp = 3586,
+  GameCreate = 3587,
+  GameCreateResp = 3588,
+  GameJoin = 3589,
+  GameAction = 3590,
+  GameUpdate = 3591,
+
+  // Channel (3840-3872)
+  ChannelGetList = 3841,
+  ChannelGetListResp = 3842,
+  ChannelCreate = 3843,
+  ChannelCreateResp = 3844,
+  ChannelGetPosts = 3845,
+  ChannelGetPostsResp = 3846,
+  ChannelCreatePost = 3847,
+  ChannelSubscribe = 3848,
+  ChannelUnsubscribe = 3849,
+  CommunityGetList = 3850,
+  CommunityGetListResp = 3851,
+  CommunityCreate = 3852,
+  CommunityJoin = 3853,
+  CommunityLeave = 3854,
+
+  // Shop (4096-4128)
+  ShopGetProducts = 4097,
+  ShopGetProductsResp = 4098,
+  ShopCreateProduct = 4099,
+  ShopBuyProduct = 4100,
+  ShopAddToWishlist = 4101,
+  ShopCreateWishlist = 4102,
+  ShopGetFlashDeals = 4103,
+  ShopGetFlashDealsResp = 4104,
+  ShopGetOrders = 4105,
+  ShopGetOrdersResp = 4106,
+  ShopGetWishlists = 4107,
+  ShopGetWishlistsResp = 4108,
+
+  // Watch Together (4352-4384)
+  WatchCreate = 4353,
+  WatchCreateResp = 4354,
+  WatchSync = 4355,
+  WatchSynced = 4356,
+  WatchGet = 4357,
+  WatchGetResp = 4358,
+  WatchSessionUpdated = 4359,
+
+  // Story (4608-4640)
+  StoryCreate = 4609,
+  StoryCreateResp = 4610,
+  StoryGet = 4611,
+  StoryGetResp = 4612,
+  StoryNew = 4613,
+
+  // Task (4864-4896)
+  TaskGetList = 4865,
+  TaskGetListResp = 4866,
+  TaskCreate = 4867,
+  TaskCreateResp = 4868,
+  TaskComplete = 4869,
+  TaskDelete = 4870,
+  TaskNew = 4871,
+
+  // Note (5120-5152)
+  NoteGet = 5121,
+  NoteGetResp = 5122,
+  NoteSave = 5123,
+  NoteSaved = 5124,
+  NoteUpdated = 5125,
+
+  // Focus (5376-5408)
+  FocusStart = 5377,
+  FocusStartResp = 5378,
+  FocusEnd = 5379,
+  FocusEnded = 5380,
+  FocusStarted = 5381,
+
+  // Call History (5632-5664)
+  CallHistoryGet = 5633,
+  CallHistoryGetResp = 5634,
+
+  // Meme (5888-5920)
+  MemeGetList = 5889,
+  MemeGetListResp = 5890,
+  MemeCreate = 5891,
+  MemeLike = 5892,
+  MemeNew = 5893,
+
+  // Sticker (6144-6176)
+  StickerGetPacks = 6145,
+  StickerGetPacksResp = 6146,
+  StickerGetMy = 6147,
+  StickerGetMyResp = 6148,
+  StickerGetAll = 6149,
+  StickerGetAllResp = 6150,
+  StickerPurchase = 6151,
+
+  // Search (6400-6432)
+  SearchUsers = 6401,
+  SearchUsersResp = 6402,
+  SearchMessages = 6403,
+  SearchMessagesResp = 6404,
+  SearchPosts = 6405,
+  SearchPostsResp = 6406,
+
+  // Vibe Balance (6656-6688)
+  VibeBalanceGet = 6657,
+  VibeBalanceGetResp = 6658,
+  RecordInteraction = 6659,
+
+  // Sessions (6912-6944)
+  SessionGetList = 6913,
+  SessionGetListResp = 6914,
+  SessionTerminate = 6915,
+  SessionTerminateAll = 6916,
+
+  // Privacy (7168-7200)
+  PrivacyGet = 7169,
+  PrivacyGetResp = 7170,
+  PrivacyUpdate = 7171,
+
+  // Blocked (7424-7456)
+  BlockedGetList = 7425,
+  BlockedGetListResp = 7426,
+  BlockedUnblock = 7427,
+
+  // Account (7680-7712)
+  AccountGetDeletion = 7681,
+  AccountGetDeletionResp = 7682,
+  AccountScheduleDelete = 7683,
+  AccountCancelDelete = 7684,
+
+  // TwoStep (7936-7968)
+  TwoStepGetStatus = 7937,
+  TwoStepGetStatusResp = 7938,
+  TwoStepSet = 7939,
+  TwoStepDisable = 7940,
+}

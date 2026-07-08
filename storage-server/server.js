@@ -7,13 +7,16 @@ const { execSync, exec } = require('child_process');
 const { classifyImage } = require('./classify');
 const sharp = require('sharp');
 const multer = require('multer');
+const storage = require('./storage');
 
 const PORT = process.env.PORT || 3002;
-const MEDIA_DIR = path.resolve(__dirname, 'media');
-const CACHE_DIR = path.resolve(__dirname, 'cache');
+const MEDIA_DIR = process.env.MEDIA_DIR || path.resolve(__dirname, 'media');
+const CACHE_DIR = process.env.CACHE_DIR || path.resolve(__dirname, 'cache');
 const TEMP_DIR = path.resolve(__dirname, 'tmp_upload');
 
-[MEDIA_DIR, CACHE_DIR].forEach(d => fs.mkdirSync(d, { recursive: true }));
+storage.init();
+storage.ensureDir('media');
+storage.ensureDir('cache');
 fs.rmSync(TEMP_DIR, { recursive: true, force: true });
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
