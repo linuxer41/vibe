@@ -144,6 +144,15 @@ services:
     # ports:
     #   - "5173:80"
 
+  frontend-web:
+    image: ghcr.io/linuxer41/vibe-frontend-web:latest
+    pull_policy: always
+    restart: unless-stopped
+    depends_on:
+      - backend-node
+    # ports:
+    #   - "5173:80"
+
   frontend-preview:
     image: ghcr.io/linuxer41/vibe-frontend-preview:latest
     pull_policy: always
