@@ -27,10 +27,6 @@
     backendLabel = getBackendConfig().label || 'Custom';
   }
 
-  function onBackendChanged() {
-    backendLabel = backendLabelFromStorage();
-  }
-
   function toggleTheme() {
     theme.update((t) => {
       const next = t === 'dark' ? 'light' : 'dark';

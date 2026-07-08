@@ -8,6 +8,7 @@ const { classifyImage } = require('./classify');
 const sharp = require('sharp');
 const multer = require('multer');
 const storage = require('./storage');
+const logger = require('./logger');
 
 const PORT = process.env.PORT || 3002;
 const MEDIA_DIR = process.env.MEDIA_DIR || path.resolve(__dirname, 'media');
@@ -344,7 +345,7 @@ async function serveMedia(safePath, req, res) {
       res.set({ 'Content-Type': mimeType, 'Cache-Control': 'public, max-age=31536000' });
       return res.send(outBuf);
     } catch (e) {
-      console.error('[storage] processing error:', e.message);
+      logger.error({ err: e.message }, 'processing error');
       return res.sendFile(safePath);
     }
   }
@@ -423,13 +424,13 @@ app.get('/health', (_, res) => res.json({ ok: true, uptime: process.uptime() }))
 
 const server = http.createServer({ maxHeaderSize: 65536 }, app);
 server.listen(PORT, () => {
-  console.log('[storage] servidor en puerto', PORT);
-  console.log('[storage] media:', MEDIA_DIR);
-  console.log('[storage] cache:', CACHE_DIR);
+  logger.info({ port: PORT, action: 'startup' }, 'Storage server iniciado');
+  logger.info({ dir: MEDIA_DIR }, 'Media directory');
+  logger.info({ dir: CACHE_DIR }, 'Cache directory');
 });
 
 function shutdown() {
-  console.log('[storage] shutting down...');
+  logger.info('Storage server shutting down');
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 3000);
 }

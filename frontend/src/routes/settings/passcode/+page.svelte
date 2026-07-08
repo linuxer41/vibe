@@ -104,12 +104,12 @@
       {#if ps.enabled}
         <SettingSection label="Requerir PIN después de">
           {#each timeoutOptions as opt}
-            <div class="option" class:selected={ps.timeout === opt.value} onclick={() => updateTimeout(opt.value)}>
+            <button class="option" class:selected={ps.timeout === opt.value} onclick={() => updateTimeout(opt.value)}>
               <span>{opt.label}</span>
               {#if ps.timeout === opt.value}
                 <Icon name="check" size={18} style="color: var(--accent)" strokeWidth={3} />
               {/if}
-            </div>
+            </button>
           {/each}
         </SettingSection>
         <button class="danger-btn" onclick={disable}>Desactivar PIN</button>
@@ -181,8 +181,9 @@
   .status-badge.active { color: var(--accent); }
   .option {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 16px; cursor: pointer; border-bottom: 1px solid var(--border-2);
-    transition: background 0.15s; font-size: 15px; color: var(--text);
+    padding: 14px 16px; cursor: pointer; border: none; border-bottom: 1px solid var(--border-2);
+    background: none; width: 100%; font: inherit; font-size: 15px; color: var(--text);
+    transition: background 0.15s;
   }
   .option:hover { background: rgba(255,255,255,0.03); }
   .option.selected { color: var(--accent); font-weight: 500; }

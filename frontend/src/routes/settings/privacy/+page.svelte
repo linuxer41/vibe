@@ -72,8 +72,10 @@
 
 <!-- Picker BottomSheet -->
 {#if picking}
-  <div class="picker-overlay" onclick={() => picking = null}>
-    <div class="picker-sheet" onclick={(e) => e.stopPropagation()}>
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+<div class="picker-overlay" onclick={() => picking = null}>
+<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+<div class="picker-sheet" onclick={(e) => e.stopPropagation()}>
       <div class="picker-header">
         <h3>{picking.replace(/_/g, ' ')}</h3>
         <button class="picker-close" onclick={() => picking = null}>
@@ -96,7 +98,6 @@
 
 <style>
   .content { flex: 1; overflow-y: auto; padding-bottom: 16px; }
-  .info-text { padding: 16px; font-size: 12px; color: var(--text-3); line-height: 1.5; }
   .picker-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.7);
     display: flex; align-items: flex-end; justify-content: center;

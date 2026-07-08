@@ -70,30 +70,30 @@
     {/if}
 
     <SettingSection label="Eliminar cuenta automáticamente si no uso la app durante">
-      <div class="option" class:selected={selectedDays === 30} onclick={() => schedule(30)}>
+      <button class="option" class:selected={selectedDays === 30} onclick={() => schedule(30)}>
         <span>1 mes</span>
         {#if selectedDays === 30}
           <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
         {/if}
-      </div>
-      <div class="option" class:selected={selectedDays === 90} onclick={() => schedule(90)}>
+      </button>
+      <button class="option" class:selected={selectedDays === 90} onclick={() => schedule(90)}>
         <span>3 meses</span>
         {#if selectedDays === 90}
           <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
         {/if}
-      </div>
-      <div class="option" class:selected={selectedDays === 180} onclick={() => schedule(180)}>
+      </button>
+      <button class="option" class:selected={selectedDays === 180} onclick={() => schedule(180)}>
         <span>6 meses</span>
         {#if selectedDays === 180}
           <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
         {/if}
-      </div>
-      <div class="option" class:selected={selectedDays === 365} onclick={() => schedule(365)}>
+      </button>
+      <button class="option" class:selected={selectedDays === 365} onclick={() => schedule(365)}>
         <span>1 año</span>
         {#if selectedDays === 365}
           <Icon name="check" size={20} strokeWidth={3} style="color: var(--accent)" />
         {/if}
-      </div>
+      </button>
     </SettingSection>
 
     {#if selectedDays > 0 && !deleteAt}
@@ -118,8 +118,9 @@
   .alert.active { color: var(--danger); }
   .option {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 16px; cursor: pointer; border-bottom: 1px solid var(--border-2);
-    transition: background 0.15s; font-size: 15px; color: var(--text);
+    padding: 14px 16px; cursor: pointer; border: none; border-bottom: 1px solid var(--border-2);
+    background: none; width: 100%; font: inherit; font-size: 15px; color: var(--text);
+    transition: background 0.15s;
   }
   .option:hover { background: rgba(255,255,255,0.03); }
   .option.selected { color: var(--accent); font-weight: 500; }

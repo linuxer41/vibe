@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Readable } = require('stream');
+const logger = require('./logger');
 
 let s3Client = null;
 let s3Bucket = '';
@@ -11,7 +12,7 @@ function initS3() {
   const { S3Client } = require('@aws-sdk/client-s3');
   s3Bucket = process.env.S3_BUCKET || '';
   if (!s3Bucket) {
-    console.warn('[storage] S3_BUCKET not set, S3 disabled');
+    logger.warn('S3_BUCKET not set, S3 disabled');
     return false;
   }
   s3Client = new S3Client({
@@ -24,14 +25,14 @@ function initS3() {
     },
   });
   useS3 = true;
-  console.log('[storage] S3 enabled, bucket:', s3Bucket);
+  logger.info({ bucket: s3Bucket }, 'S3 enabled');
   return true;
 }
 
 function init() {
   if (process.env.S3_BUCKET) {
     try { initS3(); } catch (e) {
-      console.warn('[storage] S3 init failed, falling back to local fs:', e.message);
+      logger.warn({ err: e.message }, 'S3 init failed, falling back to local fs');
     }
   }
 }

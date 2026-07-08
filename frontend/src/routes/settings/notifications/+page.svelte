@@ -66,7 +66,7 @@
             <span class="notif-time">{formatDate(n.created_at)}</span>
           </div>
           {#if !n.read}
-            <span class="notif-dot" />
+            <span class="notif-dot"></span>
           {/if}
         </button>
       {/each}
