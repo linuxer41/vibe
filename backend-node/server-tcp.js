@@ -8,6 +8,7 @@ require('dotenv').config()
 const db = require('./db/init')
 const kafka = require('./lib/kafka')
 const logger = require('./lib/logger')
+const tracer = require('./lib/tracer')
 const ph = require('./protocol-handler')
 const cm = require('./lib/connection-manager')
 
@@ -62,6 +63,9 @@ const server = net.createServer((socket) => {
   let sessionId = null
   let authTimedOut = false
 
+  const peer = `${socket.remoteAddress}:${socket.remotePort}`
+  tracer.connConnect('tcp', 0, peer)
+
   socket.setKeepAlive(true, 30000)
   socket.setNoDelay(true)
 
@@ -76,6 +80,7 @@ const server = net.createServer((socket) => {
 
   const parser = createFrameParser(socket, async (frame) => {
     try {
+      tracer.msgReceived('tcp', userId || 0, frame.type, HEADER_SIZE + frame.payloadLength)
       if (frame.type === MessageType.Ping) {
         socket.write(createPongFrame())
         return
@@ -118,6 +123,7 @@ const server = net.createServer((socket) => {
               clearTimeout(authTimer)
               user = resp.user
               userId = resp.user.id
+              tracer.authEvent('tcp', userId, peer, true)
               sessionId = cm.addConnection(userId, (buf) => socket.write(buf), 'tcp')
               db.setOnline(userId).catch(() => {})
               db.updateLastSeen(userId).catch(() => {})
@@ -135,6 +141,7 @@ const server = net.createServer((socket) => {
 
   socket.on('close', () => {
     clearTimeout(authTimer)
+    tracer.connDisconnect('tcp', userId || 0, peer)
     if (sessionId) cm.removeConnection(userId, sessionId)
     if (userId) {
       db.setOffline(userId).catch(() => {})

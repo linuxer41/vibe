@@ -43,11 +43,11 @@ function localPath(subdir, filename) {
   return path.join(base, filename);
 }
 
-async function ensureDir(subdir) {
+async function ensureDir(subdir, baseOverride) {
   if (useS3) return;
-  const base = subdir === 'media' ? process.env.MEDIA_DIR || path.resolve(__dirname, 'media')
+  const base = baseOverride || (subdir === 'media' ? process.env.MEDIA_DIR || path.resolve(__dirname, 'media')
     : subdir === 'cache' ? process.env.CACHE_DIR || path.resolve(__dirname, 'cache')
-    : path.resolve(__dirname, subdir);
+    : path.resolve(__dirname, subdir));
   fs.mkdirSync(base, { recursive: true });
 }
 

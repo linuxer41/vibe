@@ -1,0 +1,10 @@
+{
+  "identifier": "mobile",
+  "description": "Mobile-only permissions",
+  "windows": ["main"],
+  "platforms": ["android", "iOS"],
+  "permissions": [
+    "camera:default",
+    "system-bars-styles:default"
+  ]
+}

@@ -11,6 +11,7 @@ import (
 	"github.com/linuxer41/vibe/backend-go/internal/connection"
 	"github.com/linuxer41/vibe/backend-go/internal/frame"
 	"github.com/linuxer41/vibe/backend-go/internal/protocol"
+	"github.com/linuxer41/vibe/backend-go/internal/tracer"
 )
 
 const (
@@ -45,38 +46,48 @@ func startTCPServer(cfg *Config) {
 }
 
 func handleTCPConnection(conn net.Conn, cfg *Config) {
-	conn.SetKeepAlive(true)
-	conn.SetKeepAlivePeriod(keepAlive)
-	conn.SetNoDelay(true)
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetKeepAlivePeriod(keepAlive)
+		tcpConn.SetNoDelay(true)
+	}
 
 	client := &tcpClient{
 		conn: conn,
 		buf:  make([]byte, 0, 4096),
 	}
 
+	peer := conn.RemoteAddr().String()
+	tracer.ConnConnect("tcp", 0, peer)
+
 	// Auth timeout: first frame must be AuthRestore within 5s
 	conn.SetReadDeadline(time.Now().Add(authTimeout))
 	raw, err := readFrame(conn, client)
 	conn.SetReadDeadline(time.Time{})
 	if err != nil {
+		tracer.AuthEvent("tcp", 0, peer, false)
 		log.Printf("[tcp] auth read error: %v", err)
 		conn.Close()
 		return
 	}
 	f, err := frame.Decode(raw)
 	if err != nil || f.Type != 261 { // AuthRestore
-		log.Printf("[tcp] invalid auth frame from %s", conn.RemoteAddr())
+		tracer.AuthEvent("tcp", 0, peer, false)
+		log.Printf("[tcp] invalid auth frame from %s", peer)
 		conn.Close()
 		return
 	}
 
 	session, err := cfg.DB.GetSession(context.Background(), string(f.Payload))
 	if err != nil {
-		log.Printf("[tcp] auth failed from %s", conn.RemoteAddr())
+		tracer.AuthEvent("tcp", 0, peer, false)
+		log.Printf("[tcp] auth failed from %s", peer)
 		conn.Write(frame.EncodeError(f, "auth failed"))
 		conn.Close()
 		return
 	}
+
+	tracer.AuthEvent("tcp", session.UserID, peer, true)
 
 	s := &connection.Session{
 		UserID:    session.UserID,
@@ -90,12 +101,13 @@ func handleTCPConnection(conn net.Conn, cfg *Config) {
 	client.session = s
 	connection.Global().Add(s)
 	cfg.DB.SetUserOnline(context.Background(), session.UserID, true)
-	log.Printf("[tcp] user %d connected from %s", session.UserID, conn.RemoteAddr())
+	log.Printf("[tcp] user %d connected from %s", session.UserID, peer)
 
 	// Send auth success
 	conn.Write(frame.EncodeResponse(f, nil))
 
 	defer func() {
+		tracer.ConnDisconnect("tcp", session.UserID, peer)
 		connection.Global().Remove(session.UserID, session.Token)
 		cfg.DB.SetUserOnline(context.Background(), session.UserID, false)
 		conn.Close()
@@ -112,6 +124,7 @@ func handleTCPConnection(conn net.Conn, cfg *Config) {
 			log.Printf("[tcp] frame decode error: %v", err)
 			continue
 		}
+		tracer.MsgReceived("tcp", session.UserID, f.Type, len(raw))
 		if f.Type == frame.TypePing {
 			conn.Write(frame.PongFrame())
 			continue

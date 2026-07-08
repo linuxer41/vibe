@@ -8,6 +8,7 @@
 | Backend (Node.js) | Express + ws/tcp + pg (HTTP:2000, WS:3000, TCP:4000) | `backend-node/` |
 | Backend (Rust) | Axum + socketioxide + tokio-postgres (HTTP:2001, WS:3001, TCP:4001) | `backend-rust/` |
 | Backend (Go) | net/http + gorilla/websocket + pg (HTTP:2002, WS:3002, TCP:4002) | `backend-go/` |
+| Storage Server | Express + sharp + S3 (PORT:3002) | `storage-server/` |
 | DB | PostgreSQL | 5432 |
 | Cache/PubSub | Valkey (Redis) | 6379 |
 

@@ -10,6 +10,7 @@ import (
 	"github.com/linuxer41/vibe/backend-go/internal/connection"
 	"github.com/linuxer41/vibe/backend-go/internal/frame"
 	"github.com/linuxer41/vibe/backend-go/internal/protocol"
+	"github.com/linuxer41/vibe/backend-go/internal/tracer"
 )
 
 var upgrader = websocket.Upgrader{
@@ -21,13 +22,17 @@ var upgrader = websocket.Upgrader{
 func startWSServer(cfg *Config) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+		peer := r.RemoteAddr
+
 		token := r.URL.Query().Get("token")
 		if token == "" {
+			tracer.AuthEvent("ws", 0, peer, false)
 			http.Error(w, "token required", http.StatusUnauthorized)
 			return
 		}
 		session, err := cfg.DB.GetSession(r.Context(), token)
 		if err != nil {
+			tracer.AuthEvent("ws", 0, peer, false)
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
 		}
@@ -46,11 +51,13 @@ func startWSServer(cfg *Config) {
 		}
 		connection.Global().Add(s)
 		cfg.DB.SetUserOnline(r.Context(), session.UserID, true)
-		log.Printf("[ws] user %d connected", session.UserID)
+		tracer.ConnConnect("ws", session.UserID, peer)
+		log.Printf("[ws] user %d connected from %s", session.UserID, peer)
 
 		pingTicker := time.NewTicker(30 * time.Second)
 		defer func() {
 			pingTicker.Stop()
+			tracer.ConnDisconnect("ws", session.UserID, peer)
 			connection.Global().Remove(session.UserID, token)
 			cfg.DB.SetUserOnline(context.Background(), session.UserID, false)
 			conn.Close()
@@ -79,6 +86,7 @@ func startWSServer(cfg *Config) {
 				log.Printf("[ws] frame decode error: %v", err)
 				continue
 			}
+			tracer.MsgReceived("ws", session.UserID, f.Type, len(msg))
 			if f.Type == frame.TypePing {
 				if err := conn.WriteMessage(websocket.BinaryMessage, frame.PongFrame()); err != nil {
 					break

@@ -2,9 +2,9 @@
 // WS server (port 3001) + TCP server (port 5000)
 // Kafka for events, Valkey for gateway state
 
-pub mod generated {
+pub mod vibe_fb {
     #![allow(unused, dead_code)]
-    include!("generated/vibe_generated.rs");
+    include!("../fb/vibe_generated.rs");
 }
 
 mod db;
@@ -12,6 +12,7 @@ mod format;
 mod handlers;
 mod push;
 mod snowflake;
+mod tracer;
 mod types;
 mod valkey;
 mod protocol;
@@ -150,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                     let country_code = body.get("countryCode").and_then(|v| v.as_str()).unwrap_or("");
                                     match crate::db::find_or_create_user(&pool, phone, username, display_name, country_code).await {
                                         Ok((user, is_new)) => {
-                                            match crate::db::create_session(&pool, user.id, "").await {
+                                            match crate::db::create_session(&pool, user.id, "", "").await {
                                                 Ok(token) => Json(serde_json::json!({
                                                     "ok": true,
                                                     "token": token,
@@ -214,7 +215,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }))
         .route("/push/subscribe", post(push_subscribe_handler))
         .route("/push/unsubscribe", post(push_unsubscribe_handler))
-        .nest_service("/uploads", tower_http::services::ServeDir::new("../storage-server/media"))
+        .route("/uploads/{*path}", axum::routing::get_service(
+            tower_http::services::fs::ServeDir::new("../storage-server/media")
+        ).handle_error(|_| async { (axum::http::StatusCode::NOT_FOUND, "Not found") }))
         .layer(CorsLayer::permissive());
 
     let http_port = std::env::var("HTTP_PORT").unwrap_or_else(|_| "3002".to_string());

@@ -2,6 +2,7 @@
 // Delivers frames to connected clients. Kafka handles cross-instance message bus.
 // Redis stays only for TCP socket gateway state (connection registry).
 
+const { decode } = require('@msgpack/msgpack')
 const db = require('../db/init')
 const logger = require('./logger')
 const kafka = require('./kafka')
@@ -55,7 +56,7 @@ async function startKafkaConsumer() {
     'chat-messages': async (key, value) => {
       // New chat message — fanout to chat members
       try {
-        const { chatId, msg, senderId, token } = JSON.parse(value)
+        const { chatId, msg, senderId } = decode(value)
         if (!chatId || !msg) return
         const members = await db.getChatMembers(chatId)
         for (const m of members) {
@@ -78,7 +79,7 @@ async function startKafkaConsumer() {
     'chat-new': async (key, value) => {
       // New chat created — notify user
       try {
-        const { chatId, userId } = JSON.parse(value)
+        const { chatId, userId } = decode(value)
         if (!userId) return
         db.getUserChat(chatId, userId).then(chatData => {
           if (!chatData) return
@@ -91,7 +92,7 @@ async function startKafkaConsumer() {
     'chat-events': async (key, value) => {
       // Typing, status, delete, edit events — raw frame delivery
       try {
-        const { chatId, targetUserId, frameBase64, senderId } = JSON.parse(value)
+        const { chatId, targetUserId, frameBase64, senderId } = decode(value)
         if (!frameBase64) return
         const buf = Buffer.from(frameBase64, 'base64')
 
@@ -109,7 +110,7 @@ async function startKafkaConsumer() {
     'user-presence': async (key, value) => {
       // Online/offline status
       try {
-        const { userId, online } = JSON.parse(value)
+        const { userId, online } = decode(value)
         if (!userId) return
         const payload = JSON.stringify({ userId, online })
         sendToUser(userId, encodeFrame(MessageType.PresenceStatus, Flags.NONE, 0, Buffer.from(payload)))

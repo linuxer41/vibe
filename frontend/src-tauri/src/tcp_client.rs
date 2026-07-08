@@ -1,6 +1,7 @@
 use crate::protocol;
 use serde::Serialize;
 use std::sync::Arc;
+use tauri::Emitter;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::Mutex;
@@ -49,7 +50,7 @@ impl TauriTcpClient {
             .try_write(&auth_frame)
             .map_err(|e| format!("write auth: {}", e))?;
 
-        *self.stream.lock().await = Some(stream.try_clone().await.map_err(|e| format!("clone: {}", e))?);
+        *self.stream.lock().await = Some(stream);
 
         let client = Self {
             stream: self.stream.clone(),

@@ -215,8 +215,6 @@ import { requestNotifPermission } from '$lib/notifications';
       }
     });
   }
-    });
-  }
 </script>
 
 {#if $authStep === 'loading'}

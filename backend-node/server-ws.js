@@ -13,6 +13,7 @@ require('dotenv').config()
 const db = require('./db/init')
 const kafka = require('./lib/kafka')
 const logger = require('./lib/logger')
+const tracer = require('./lib/tracer')
 const ph = require('./protocol-handler')
 const cm = require('./lib/connection-manager')
 
@@ -42,10 +43,12 @@ wss.on('connection', async (ws, req) => {
   }
 
   if (!user) {
+    tracer.authEvent('ws', 0, req.socket.remoteAddress, false)
     logger.warn({ ip: req.socket.remoteAddress }, 'WS conexión rechazada — sin token')
     ws.close(4001, 'Autenticación requerida')
     return
   }
+  tracer.authEvent('ws', user.id, req.socket.remoteAddress, true)
 
   ws.__auth = user
   ws.__userId = user.id
@@ -55,6 +58,7 @@ wss.on('connection', async (ws, req) => {
     try {
       const frame = decodeFrame(raw)
       if (!frame) return
+      tracer.msgReceived('ws', user.id, frame.type, raw.length)
       if (frame.type === MessageType.Ping) { ws.send(createPongFrame()); return }
       ph.handle(ws, ws.__auth, frame)
     } catch (e) {
@@ -62,7 +66,10 @@ wss.on('connection', async (ws, req) => {
     }
   })
 
+  tracer.connConnect('ws', user.id, req.socket.remoteAddress)
+
   ws.on('close', () => {
+    tracer.connDisconnect('ws', ws.__userId, req.socket.remoteAddress)
     if (wsSessionId) cm.removeConnection(ws.__userId, wsSessionId)
     db.setOffline(ws.__userId).catch(() => {})
     kafka.produce('user-presence', String(ws.__userId), { userId: ws.__userId, online: false })

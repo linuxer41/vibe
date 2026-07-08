@@ -12,6 +12,7 @@ import (
 	"github.com/linuxer41/vibe/backend-go/internal/db"
 	"github.com/linuxer41/vibe/backend-go/internal/kafka"
 	"github.com/linuxer41/vibe/backend-go/internal/protocol"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 type Config struct {
@@ -40,9 +41,14 @@ func main() {
 	} else {
 		defer kafkaClient.Close()
 		if err := kafkaClient.StartConsumer("vibe-go-backend",
-			[]string{"chat-messages", "chat-new", "user-presence"},
+			[]string{"chat-messages", "chat-new", "chat-events", "user-presence"},
 			func(msgType string, key string, value []byte) {
-				log.Printf("[kafka] msg type=%s key=%s len=%d", msgType, key, len(value))
+				var parsed map[string]interface{}
+				if err := msgpack.Unmarshal(value, &parsed); err != nil {
+					log.Printf("[kafka] parse error: %v", err)
+					return
+				}
+				log.Printf("[kafka] msg type=%s key=%s data=%v", msgType, key, parsed)
 				connection.Global().Broadcast(value)
 			},
 		); err != nil {

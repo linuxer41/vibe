@@ -3872,6 +3872,43 @@ pub async fn remove_push_subscription(
     Ok(())
 }
 
+pub async fn track_activity(
+    pool: &DbPool,
+    user_id: i64,
+    section: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    update_vibe_balance(pool, user_id, section, 1).await
+}
+
+pub async fn get_user_posts(
+    pool: &DbPool,
+    user_id: i64,
+) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
+    let client = pool.get().await?;
+    let rows = client
+        .query(
+            "SELECT p.*, u.display_name, u.avatar, u.username
+             FROM posts p JOIN users u ON p.user_id = u.id
+             WHERE p.user_id = $1 AND (p.expires_at IS NULL OR p.expires_at > NOW())
+             ORDER BY p.created_at DESC FETCH FIRST 50 ROWS ONLY",
+            &[&user_id],
+        )
+        .await?;
+    Ok(serde_json::to_value(rows.iter().map(|r| {
+        serde_json::json!({
+            "id": r.get::<_, i64>("id"),
+            "user_id": r.get::<_, i64>("user_id"),
+            "text": r.get::<_, Option<String>>("text"),
+            "media": r.get::<_, Option<String>>("media"),
+            "media_type": r.get::<_, Option<String>>("media_type"),
+            "display_name": r.get::<_, Option<String>>("display_name"),
+            "avatar": r.get::<_, Option<String>>("avatar"),
+            "username": r.get::<_, Option<String>>("username"),
+            "created_at": r.get::<_, chrono::NaiveDateTime>("created_at").and_utc().to_rfc3339(),
+        })
+    }).collect::<Vec<_>>()).unwrap_or_default())
+}
+
 pub async fn get_all_push_subscriptions(
     pool: &DbPool,
 ) -> Result<Vec<(i64, String, serde_json::Value)>, Box<dyn std::error::Error + Send + Sync>> {

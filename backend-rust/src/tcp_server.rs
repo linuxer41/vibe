@@ -6,10 +6,11 @@ use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::{error, info, warn};
 
-use crate::connection_manager::ConnectionManager;
+use crate::connection_manager::{ConnectionManager, SendFn};
 use crate::protocol::{self, Frame, decode_frame, HEADER_SIZE, MAGIC};
-use crate::protocol::msg_type;
+use crate::protocol::{msg_type, flags as proto_flags};
 use crate::handler_registry::{HandlerRegistry, HandlerCtx};
+use crate::tracer;
 
 pub async fn start_tcp_server(
     port: u16,
@@ -62,10 +63,8 @@ impl FrameParser {
                 break;
             }
 
-            // Check magic
             let magic = u16::from_be_bytes([self.buffer[0], self.buffer[1]]);
             if magic != MAGIC {
-                // Scan for magic
                 let pos = self.buffer.windows(2).position(|w| w[0] == (MAGIC >> 8) as u8 && w[1] == (MAGIC & 0xFF) as u8);
                 match pos {
                     Some(p) => { self.buffer.drain(..p); }
@@ -74,7 +73,6 @@ impl FrameParser {
                 if self.buffer.len() < HEADER_SIZE { break; }
             }
 
-            // Read payload length from header
             let payload_len = u32::from_be_bytes([self.buffer[10], self.buffer[11], self.buffer[12], self.buffer[13]]);
             let frame_size = HEADER_SIZE + payload_len as usize;
 
@@ -103,23 +101,30 @@ async fn handle_tcp_connection(
 ) {
     let _ = stream.set_nodelay(true);
     let mut parser = FrameParser::new();
-    let mut buf = [0u8; 4096];
+    let mut buf = [0u8; 65536];
 
     let mut user: Option<crate::types::User> = None;
     let mut user_id: i64 = 0;
     let mut session_id: Option<crate::connection_manager::SessionId> = None;
 
-    let send_fn: Arc<dyn Fn(Vec<u8>) + Send + Sync> = {
-        let mut s = stream.clone();
+    tracer::conn_connect("tcp", 0, &peer.to_string());
+
+    // Split stream for concurrent read/write
+    let (mut reader, writer) = stream.into_split();
+    let writer = Arc::new(tokio::sync::Mutex::new(writer));
+    let send_fn: SendFn = {
+        let w = writer.clone();
         Arc::new(move |buf: Vec<u8>| {
-            let s = &mut s;
-            // Non-blocking best-effort send
-            let _ = futures_util::executor::block_on(async { s.write_all(&buf).await });
+            let w = w.clone();
+            tokio::spawn(async move {
+                let mut guard = w.lock().await;
+                let _ = guard.write_all(&buf).await;
+            });
         })
     };
 
     loop {
-        let n = match stream.read(&mut buf).await {
+        let n = match reader.read(&mut buf).await {
             Ok(0) => break,
             Ok(n) => n,
             Err(e) => {
@@ -130,20 +135,26 @@ async fn handle_tcp_connection(
 
         let frames = parser.feed(&buf[..n]);
         for frame in frames {
-            // Ping → Pong
+            let msg_type_val = frame.msg_type;
+            let payload_size = frame.payload.len();
+
+            tracer::msg_received("tcp", user_id, msg_type_val, payload_size);
+
             if frame.msg_type == msg_type::PING {
                 let pong = protocol::create_pong_frame();
-                let _ = stream.write_all(&pong).await;
+                let w = writer.clone();
+                tokio::spawn(async move {
+                    let mut guard = w.lock().await;
+                    let _ = guard.write_all(&pong).await;
+                });
                 continue;
             }
 
-            // Handle auth
             if user.is_none() {
                 handle_tcp_auth(&frame, &mut user, &mut user_id, &mut session_id, &conn_mgr, &send_fn, &registry, kafka.clone()).await;
                 continue;
             }
 
-            // Dispatch
             if let Some(u) = &user {
                 let ctx = HandlerCtx {
                     user: u.clone(),
@@ -155,6 +166,8 @@ async fn handle_tcp_connection(
             }
         }
     }
+
+    tracer::conn_disconnect("tcp", user_id, &peer.to_string());
 
     // Cleanup
     if let Some(sid) = session_id {
@@ -184,7 +197,7 @@ async fn handle_tcp_auth(
     if handler.is_none() { return; }
 
     let orig_send = send_fn.clone();
-    let first_send = std::sync::Arc::new(tokio::sync::atomic::AtomicBool::new(true));
+    let first_send = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
     let first_send_c = first_send.clone();
     let conn_mgr_clone = conn_mgr.clone();
     let user_clone: std::sync::Arc<tokio::sync::Mutex<Option<crate::types::User>>> = std::sync::Arc::new(tokio::sync::Mutex::new(None));
@@ -194,12 +207,12 @@ async fn handle_tcp_auth(
     let sid_clone: std::sync::Arc<tokio::sync::Mutex<Option<crate::connection_manager::SessionId>>> = std::sync::Arc::new(tokio::sync::Mutex::new(None));
     let sid_clone2 = sid_clone.clone();
 
-    let send_wrapper: Arc<dyn Fn(Vec<u8>) + Send + Sync> = Arc::new(move |data: Vec<u8>| {
+    let send_wrapper: SendFn = Arc::new(move |data: Vec<u8>| {
         let first = first_send_c.swap(false, std::sync::atomic::Ordering::SeqCst);
         if first {
             let frame = decode_frame(&data);
             if let Some(f) = frame {
-                if f.flags & flags::RESPONSE != 0 {
+                if f.flags & proto_flags::RESPONSE != 0 {
                     let text = String::from_utf8_lossy(&f.payload);
                     if let Ok(resp) = serde_json::from_str::<serde_json::Value>(&text) {
                         if resp.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
@@ -213,10 +226,17 @@ async fn handle_tcp_auth(
                                     avatar: resp.get("avatar").and_then(|v| v.as_str()).unwrap_or("").to_string(),
                                     ..Default::default()
                                 };
-                                let sid = conn_mgr_clone.add_connection(uid, orig_send.clone(), "tcp").await;
-                                *user_clone2.try_lock().unwrap() = Some(u);
-                                *uid_clone2.try_lock().unwrap() = uid;
-                                *sid_clone2.try_lock().unwrap() = Some(sid);
+                                let cm = conn_mgr_clone.clone();
+                                let os = orig_send.clone();
+                                let uc2 = user_clone2.clone();
+                                let ucid2 = uid_clone2.clone();
+                                let sc2 = sid_clone2.clone();
+                                tokio::spawn(async move {
+                                    let sid = cm.add_connection(uid, os, "tcp").await;
+                                    *uc2.try_lock().unwrap() = Some(u);
+                                    *ucid2.try_lock().unwrap() = uid;
+                                    *sc2.try_lock().unwrap() = Some(sid);
+                                });
                             }
                         }
                     }
@@ -236,17 +256,15 @@ async fn handle_tcp_auth(
 
     // Check if auth was set by the interceptor
     if let Ok(mut u) = user_clone.try_lock() {
-        if u.is_some() {
-            let u2 = u.take().unwrap();
+        if let Some(u2) = u.take() {
             *user = Some(u2.clone());
-            // Register online
             crate::valkey::set_online(u2.id).await;
         }
-    }
+    };
     if let Ok(uid) = uid_clone.try_lock() {
         *user_id = *uid;
-    }
-    if let Ok(sid) = sid_clone.try_lock() {
+    };
+    if let Ok(mut sid) = sid_clone.try_lock() {
         *session_id = sid.take();
-    }
+    };
 }

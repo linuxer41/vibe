@@ -34,47 +34,42 @@ if ($LASTEXITCODE -eq 0) {
 Write-Host "[2/4] Rust..."
 & $flatc --rust -o $outRs $fbsFiles 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) {
-    # Merge all *_generated.rs into one vibe_generated.rs
-    # Structure: keep first file's vibe opening, then append all sub-modules,
-    # then close vibe once
     $rsFiles = Get-ChildItem $outRs -Filter "*_generated.rs" | Sort-Object Name
-    $header = $null        # first file: everything up to and including "pub mod vibe {"
-    $body = @()            # content from all files inside vibe { ... }
+    $header = $null
+    $body = @()
     $vibeClose = "}  // pub mod Vibe"
     $first = $true
     foreach ($f in $rsFiles) {
         $lines = Get-Content $f.FullName
+        # Strip extern crate alloc (duplicated per-file)
+        $lines = $lines | Where-Object { $_ -notmatch '^\s*extern crate alloc;' }
         if ($first) {
-            # Split first file at the vibe closing brace
             $splitAt = -1
             for ($i = 0; $i -lt $lines.Count; $i++) {
-                if ($lines[$i] -match '// pub mod Vibe') { $splitAt = $i; break }
+                if ($lines[$i] -match '\A\}  // pub mod Vibe') { $splitAt = $i; break }
             }
             if ($splitAt -ge 0) {
-                $header = $lines[0..$splitAt]   # includes "}  // pub mod Vibe" (we'll replace)
+                $header = $lines[0..$splitAt]
             } else {
                 $header = $lines
             }
             $first = $false
         } else {
-            # Extract content between "pub mod vibe {" and "}  // pub mod Vibe"
             $start = 0
             for ($i = 0; $i -lt $lines.Count; $i++) {
-                if ($lines[$i] -match 'pub mod vibe ') { $start = $i; break }  # keep the opening line itself? No, skip it
+                if ($lines[$i] -match 'pub mod vibe ') { $start = $i; break }
             }
-            if ($start -gt 0) { $start++ } # skip past `pub mod vibe {`
+            if ($start -gt 0) { $start++ }
             $end = $lines.Count - 1
             for ($i = $lines.Count - 1; $i -ge 0; $i--) {
-                if ($lines[$i] -match '// pub mod Vibe') { $end = $i - 1; break }
+                if ($lines[$i] -match '\A\}  // pub mod Vibe') { $end = $i - 1; break }
             }
             if ($start -le $end) {
                 $body += $lines[$start..$end]
             }
         }
     }
-    # Assemble: header (without the closing }) + body + closing }
     if ($header) {
-        # Remove last line (the closing "}  // pub mod Vibe") from header
         $hdrLen = $header.Count
         $final = $header[0..($hdrLen - 2)]
         $final += $body
@@ -136,23 +131,25 @@ if (Test-Path $outJs) {
     Write-Warning "  => Skipping backend JS copy (JS not generated)"
 }
 
-# Backend Rust (merged vibe_generated.rs)
+# Backend Rust (merged vibe_generated.rs into fb/)
 $mergedFile = Join-Path $outRs "vibe_generated.rs"
 if (Test-Path $mergedFile) {
-    $beRsGen = Join-Path $root "..\backend-rust\src\generated"
-    New-Item -ItemType Directory -Path $beRsGen -Force | Out-Null
-    Copy-Item -Path $mergedFile -Destination (Join-Path $beRsGen "vibe_generated.rs") -Force
-    Write-Host "  => Backend Rust: $beRsGen\vibe_generated.rs"
+    $beRsFb = Join-Path $root "..\backend-rust\fb"
+    if (Test-Path $beRsFb) { Remove-Item -Recurse -Force $beRsFb }
+    New-Item -ItemType Directory -Path $beRsFb -Force | Out-Null
+    Copy-Item -Path $mergedFile -Destination (Join-Path $beRsFb "vibe_generated.rs") -Force
+    Write-Host "  => Backend Rust: $beRsFb\vibe_generated.rs"
 } else {
     Write-Warning "  => vibe_generated.rs not found, skipping backend-rust copy"
 }
 
-# Tauri (Rust) — same vibe_generated.rs
+# Tauri (Rust) — same vibe_generated.rs into src-tauri/fb/
 if (Test-Path $mergedFile) {
-    $tauriGen = Join-Path $root "..\frontend\src-tauri\src\generated"
-    New-Item -ItemType Directory -Path $tauriGen -Force | Out-Null
-    Copy-Item -Path $mergedFile -Destination (Join-Path $tauriGen "vibe_generated.rs") -Force
-    Write-Host "  => Tauri Rust: $tauriGen\vibe_generated.rs"
+    $tauriFb = Join-Path $root "..\frontend\src-tauri\fb"
+    if (Test-Path $tauriFb) { Remove-Item -Recurse -Force $tauriFb }
+    New-Item -ItemType Directory -Path $tauriFb -Force | Out-Null
+    Copy-Item -Path $mergedFile -Destination (Join-Path $tauriFb "vibe_generated.rs") -Force
+    Write-Host "  => Tauri Rust: $tauriFb\vibe_generated.rs"
 } else {
     Write-Warning "  => vibe_generated.rs not found, skipping tauri copy"
 }

@@ -15,6 +15,7 @@
     "flatbuffers": "^25.9.23",
     "ioredis": "^5.11.1",
     "kafkajs": "^2.2.4",
+    "@msgpack/msgpack": "^3.0.0",
     "livekit-server-sdk": "^2.16.0",
     "pg": "^8.22.0",
     "pino": "^10.3.1",

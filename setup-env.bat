@@ -31,5 +31,12 @@ if exist "%ROOT%backend-go\.env.example" (
   echo [env] backend-go/.env.example no encontrado
 )
 
+if exist "%ROOT%storage-server\.env.example" (
+  copy /Y "%ROOT%storage-server\.env.example" "%ROOT%storage-server\.env" >nul
+  echo [env] storage-server/.env listo
+) else (
+  echo [env] storage-server/.env.example no encontrado
+)
+
 echo [env] proceso terminado
 pause

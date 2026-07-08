@@ -59,6 +59,9 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_NUM_PARTITIONS: "3"
       KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
     volumes:
       - kafkadata:/bitnami/kafka
     healthcheck:
@@ -67,7 +70,7 @@ services:
       timeout: 5s
       retries: 10
     ports:
-      - "9092:9092"
+      - "9616:9092"
 
   backend-node:
     image: ghcr.io/linuxer41/vibe-backend:latest

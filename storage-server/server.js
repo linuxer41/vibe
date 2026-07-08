@@ -15,8 +15,8 @@ const CACHE_DIR = process.env.CACHE_DIR || path.resolve(__dirname, 'cache');
 const TEMP_DIR = path.resolve(__dirname, 'tmp_upload');
 
 storage.init();
-storage.ensureDir('media');
-storage.ensureDir('cache');
+storage.ensureDir('media', MEDIA_DIR).catch(() => {});
+storage.ensureDir('cache', CACHE_DIR).catch(() => {});
 fs.rmSync(TEMP_DIR, { recursive: true, force: true });
 fs.mkdirSync(TEMP_DIR, { recursive: true });
 
@@ -167,13 +167,17 @@ async function processImage(filePath, filename) {
   const tags = imgMeta.tags;
 
   const newFilename = `${path.basename(filename, ext)}.webp`;
-  const outputPath = path.join(MEDIA_DIR, newFilename);
+  const outputPath = path.join(TEMP_DIR, newFilename);
   try {
     await pipeline.webp({ quality: 82 }).toFile(outputPath);
-    if (fs.existsSync(filePath) && filePath !== outputPath) fs.unlink(filePath, () => {});
+    const buf = fs.readFileSync(outputPath);
+    await storage.writeFile('media', newFilename, buf);
+    fs.unlink(outputPath, () => {});
+    fs.unlink(filePath, () => {});
   } catch (e) {
-    const fallbackPath = path.join(MEDIA_DIR, filename);
-    fs.renameSync(filePath, fallbackPath);
+    const buf = fs.readFileSync(filePath);
+    await storage.writeFile('media', filename, buf);
+    fs.unlink(filePath, () => {});
     return { filename, width: meta.width, height: meta.height, tags, error: `webp conversion failed: ${e.message}` };
   }
 
@@ -185,17 +189,24 @@ async function processVideo(filePath, filename) {
   try { meta = await probeVideo(filePath); } catch {}
 
   const thumbFilename = `${path.basename(filename, path.extname(filename))}_thumb.jpg`;
-  const thumbPath = path.join(MEDIA_DIR, thumbFilename);
+  const thumbPath = path.join(TEMP_DIR, thumbFilename);
   const hasThumb = await extractFrame(filePath, thumbPath);
   if (hasThumb) {
     try {
       const thumbMeta = await sharp(thumbPath).metadata();
-      if (thumbMeta.width > 640) await sharp(thumbPath).resize(640).toFile(thumbPath + '_tmp').then(() => fs.renameSync(thumbPath + '_tmp', thumbPath));
+      if (thumbMeta.width > 640) {
+        await sharp(thumbPath).resize(640).toFile(thumbPath + '_tmp');
+        fs.renameSync(thumbPath + '_tmp', thumbPath);
+      }
+      const buf = fs.readFileSync(thumbPath);
+      await storage.writeFile('media', thumbFilename, buf);
+      fs.unlink(thumbPath, () => {});
     } catch {}
   }
 
-  const destPath = path.join(MEDIA_DIR, filename);
-  fs.renameSync(filePath, destPath);
+  const buf = fs.readFileSync(filePath);
+  await storage.writeFile('media', filename, buf);
+  fs.unlink(filePath, () => {});
 
   return {
     filename, thumbnail: hasThumb ? thumbFilename : null,
@@ -219,16 +230,21 @@ async function processAndClassify(filePath, uniqueName, originalName, mime, file
     const vidResult = await processVideo(filePath, uniqueName);
     Object.assign(result, vidResult);
   } else {
-    const destPath = path.join(MEDIA_DIR, uniqueName);
-    if (filePath !== destPath) fs.renameSync(filePath, destPath);
+    const buf = fs.readFileSync(filePath);
+    await storage.writeFile('media', uniqueName, buf);
+    fs.unlink(filePath, () => {});
   }
 
   if (result.tags.length < 3 && result.filename && !result.error) {
     try {
-      const mediaPath = path.join(MEDIA_DIR, result.filename);
-      if (fs.existsSync(mediaPath)) {
-        const deepTags = await classifyImage(mediaPath);
+      const localPath = path.join(TEMP_DIR, result.filename);
+      const exists = await storage.fileExists('media', result.filename);
+      if (exists) {
+        const buf = await storage.readFile('media', result.filename);
+        fs.writeFileSync(localPath, buf);
+        const deepTags = await classifyImage(localPath);
         result.tags = [...new Set([...result.tags, ...deepTags])];
+        fs.unlink(localPath, () => {});
       }
     } catch {}
   }
@@ -258,12 +274,10 @@ app.post('/upload', (req, res) => {
 
     try {
       const result = await processAndClassify(filePath, uniqueName, originalname, mimetype, size);
-      const url = `http://localhost:${PORT}/media/${result.filename}`;
+      const url = storage.getMediaUrl(result.filename, PORT);
       res.json({ ok: true, url, metadata: result });
     } catch (e) {
-      const destPath = path.join(MEDIA_DIR, uniqueName);
-      if (fs.existsSync(filePath)) fs.renameSync(filePath, destPath);
-      const url = `http://localhost:${PORT}/media/${uniqueName}`;
+      const url = storage.getMediaUrl(uniqueName, PORT);
       res.json({ ok: true, url, metadata: { filename: uniqueName, error: e.message } });
     }
   });
@@ -287,18 +301,15 @@ app.post('/upload/raw', express.raw({ limit: '100mb', type: 'application/octet-s
 
   try {
     const result = await processAndClassify(filePath, uniqueName, originalName, mime, buf.length);
-    const url = `http://localhost:${PORT}/media/${result.filename}`;
+    const url = storage.getMediaUrl(result.filename, PORT);
     res.json({ ok: true, url, metadata: result });
   } catch (e) {
-    const destPath = path.join(MEDIA_DIR, uniqueName);
-    if (fs.existsSync(filePath)) fs.renameSync(filePath, destPath);
-    const url = `http://localhost:${PORT}/media/${uniqueName}`;
+    const url = storage.getMediaUrl(uniqueName, PORT);
     res.json({ ok: true, url, metadata: { filename: uniqueName, error: e.message } });
   }
 });
 
 async function serveMedia(safePath, req, res) {
-  const stat = fs.statSync(safePath);
   const ext = path.extname(safePath).toLowerCase();
   const mime = MIME_TYPES[ext] || 'application/octet-stream';
   const isImage = mime.startsWith('image/') && ext !== '.gif';
@@ -313,6 +324,7 @@ async function serveMedia(safePath, req, res) {
     const opts = { w, h, fit, format, quality };
     const cacheKey = getCacheKey(path.basename(safePath), opts);
     const cachePath = path.join(CACHE_DIR, cacheKey);
+
     if (fs.existsSync(cachePath)) {
       res.set({ 'Content-Type': EXT_TO_MIME[opts.format] || mime, 'Cache-Control': 'public, max-age=31536000' });
       return res.sendFile(cachePath);
@@ -327,16 +339,17 @@ async function serveMedia(safePath, req, res) {
       if (mimeType === 'image/webp') pipeline = pipeline.webp({ quality });
       else if (mimeType === 'image/png') pipeline = pipeline.png({ quality: quality > 90 ? undefined : Math.round(quality / 10) });
       else pipeline = pipeline.jpeg({ quality });
-      const buf = await pipeline.toBuffer();
-      fs.writeFile(cachePath, buf, () => {});
+      const outBuf = await pipeline.toBuffer();
+      fs.writeFile(cachePath, outBuf, () => {});
       res.set({ 'Content-Type': mimeType, 'Cache-Control': 'public, max-age=31536000' });
-      return res.send(buf);
+      return res.send(outBuf);
     } catch (e) {
       console.error('[storage] processing error:', e.message);
       return res.sendFile(safePath);
     }
   }
 
+  const stat = fs.statSync(safePath);
   res.set({ 'Content-Type': mime, 'Cache-Control': 'public, max-age=31536000', 'Accept-Ranges': 'bytes' });
   if (req.headers.range) {
     const parts = req.headers.range.replace(/bytes=/, '').split('-');
@@ -349,26 +362,57 @@ async function serveMedia(safePath, req, res) {
   }
 }
 
-app.get(/^\/(media|uploads)\/(.+)/, (req, res) => {
-  const filePath = path.join(MEDIA_DIR, req.params[1]);
-  const safePath = path.resolve(filePath);
-  if (!safePath.startsWith(MEDIA_DIR)) return res.status(403).send('Forbidden');
-  if (!fs.existsSync(safePath)) {
-    const webpPath = safePath.replace(/\.\w+$/, '.webp');
-    if (fs.existsSync(webpPath)) return serveMedia(webpPath, req, res);
-    return res.status(404).send('Not found');
+app.get(/^\/(media|uploads)\/(.+)/, async (req, res) => {
+  const filename = req.params[1];
+  const safeFilename = path.basename(filename);
+
+  // Try local MEDIA_DIR first, then S3
+  const localPath = path.join(MEDIA_DIR, safeFilename);
+  if (fs.existsSync(localPath)) {
+    return serveMedia(localPath, req, res);
   }
-  serveMedia(safePath, req, res);
+
+  // Check for webp variant locally
+  const webpPath = localPath.replace(/\.\w+$/, '.webp');
+  if (fs.existsSync(webpPath)) {
+    return serveMedia(webpPath, req, res);
+  }
+
+  // Try S3: download to temp and serve
+  const exists = await storage.fileExists('media', safeFilename).catch(() => false);
+  if (exists) {
+    const buf = await storage.readFile('media', safeFilename);
+    fs.writeFileSync(localPath, buf);
+    return serveMedia(localPath, req, res);
+  }
+
+  // Check webp variant on S3
+  const webpName = safeFilename.replace(/\.\w+$/, '.webp');
+  if (webpName !== safeFilename) {
+    const webpExists = await storage.fileExists('media', webpName).catch(() => false);
+    if (webpExists) {
+      const buf = await storage.readFile('media', webpName);
+      fs.writeFileSync(webpPath, buf);
+      return serveMedia(webpPath, req, res);
+    }
+  }
+
+  res.status(404).send('Not found');
 });
 
 app.post('/classify', express.json({ limit: '1mb' }), async (req, res) => {
   const { filename } = req.body || {};
   if (!filename) return res.status(400).json({ ok: false, error: 'filename required' });
-  const safePath = path.resolve(path.join(MEDIA_DIR, path.basename(filename)));
-  if (!safePath.startsWith(MEDIA_DIR) || !fs.existsSync(safePath))
-    return res.status(404).json({ ok: false, error: 'File not found' });
+  const safeFilename = path.basename(filename);
+  const localPath = path.join(MEDIA_DIR, safeFilename);
+  if (!fs.existsSync(localPath)) {
+    const exists = await storage.fileExists('media', safeFilename).catch(() => false);
+    if (!exists) return res.status(404).json({ ok: false, error: 'File not found' });
+    const buf = await storage.readFile('media', safeFilename);
+    fs.writeFileSync(localPath, buf);
+  }
   try {
-    const tags = await classifyImage(safePath);
+    const tags = await classifyImage(localPath);
     res.json({ ok: true, tags });
   } catch (e) {
     res.status(500).json({ ok: false, error: e.message });
@@ -379,7 +423,7 @@ app.get('/health', (_, res) => res.json({ ok: true, uptime: process.uptime() }))
 
 const server = http.createServer({ maxHeaderSize: 65536 }, app);
 server.listen(PORT, () => {
-  console.log('[storage] servidor en http://localhost:' + PORT);
+  console.log('[storage] servidor en puerto', PORT);
   console.log('[storage] media:', MEDIA_DIR);
   console.log('[storage] cache:', CACHE_DIR);
 });
@@ -389,6 +433,5 @@ function shutdown() {
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 3000);
 }
-
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);

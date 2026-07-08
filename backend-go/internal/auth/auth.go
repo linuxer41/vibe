@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/linuxer41/vibe/backend-go/internal/db"
-	Vibe "github.com/linuxer41/vibe/backend-go/fb/Vibe"
+	VibeAuth "github.com/linuxer41/vibe/backend-go/fb/Vibe/Auth"
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
@@ -127,25 +127,25 @@ func AuthenticateToken(ctx context.Context, database *db.Pool, token string) (*d
 }
 
 func DecodeSendCodeRequest(data []byte) (*SendCodeRequest, error) {
-	req := Vibe.GetRootAsSendCodeRequest(data, 0)
+	req := VibeAuth.GetRootAsSendCodeRequest(data, 0)
 	return &SendCodeRequest{
 		Phone: string(req.Phone()),
 	}, nil
 }
 
-func BuildSendCodeResponse(success bool, message string) []byte {
+func BuildSendCodeResponse(success bool, code string) []byte {
 	b := flatbuffers.NewBuilder(64)
-	phone := b.CreateString(message)
-	Vibe.SendCodeResponseStart(b)
-	Vibe.SendCodeResponseAddSuccess(b, success)
-	Vibe.SendCodeResponseAddMessage(b, phone)
-	resp := Vibe.SendCodeResponseEnd(b)
+	codeOff := b.CreateString(code)
+	VibeAuth.SendCodeResponseStart(b)
+	VibeAuth.SendCodeResponseAddOk(b, success)
+	VibeAuth.SendCodeResponseAddCode(b, codeOff)
+	resp := VibeAuth.SendCodeResponseEnd(b)
 	b.Finish(resp)
 	return b.FinishedBytes()
 }
 
 func DecodeVerifyCodeRequest(data []byte) (*VerifyCodeRequest, error) {
-	req := Vibe.GetRootAsVerifyCodeRequest(data, 0)
+	req := VibeAuth.GetRootAsVerifyCodeRequest(data, 0)
 	return &VerifyCodeRequest{
 		Phone: string(req.Phone()),
 		Code:  string(req.Code()),
@@ -155,17 +155,17 @@ func DecodeVerifyCodeRequest(data []byte) (*VerifyCodeRequest, error) {
 func BuildVerifyCodeResponse(success bool, token string, userID int64) []byte {
 	b := flatbuffers.NewBuilder(128)
 	tok := b.CreateString(token)
-	Vibe.VerifyCodeResponseStart(b)
-	Vibe.VerifyCodeResponseAddSuccess(b, success)
-	Vibe.VerifyCodeResponseAddToken(b, tok)
-	Vibe.VerifyCodeResponseAddUserId(b, userID)
-	resp := Vibe.VerifyCodeResponseEnd(b)
+	VibeAuth.VerifyCodeResponseStart(b)
+	VibeAuth.VerifyCodeResponseAddOk(b, success)
+	VibeAuth.VerifyCodeResponseAddToken(b, tok)
+	VibeAuth.VerifyCodeResponseAddUserId(b, uint64(userID))
+	resp := VibeAuth.VerifyCodeResponseEnd(b)
 	b.Finish(resp)
 	return b.FinishedBytes()
 }
 
 func DecodeRestoreRequest(data []byte) (*RestoreRequest, error) {
-	req := Vibe.GetRootAsRestoreSessionRequest(data, 0)
+	req := VibeAuth.GetRootAsRestoreSessionRequest(data, 0)
 	return &RestoreRequest{
 		Token: string(req.Token()),
 	}, nil
@@ -173,10 +173,10 @@ func DecodeRestoreRequest(data []byte) (*RestoreRequest, error) {
 
 func BuildRestoreResponse(success bool, userID int64) []byte {
 	b := flatbuffers.NewBuilder(64)
-	Vibe.RestoreSessionResponseStart(b)
-	Vibe.RestoreSessionResponseAddSuccess(b, success)
-	Vibe.RestoreSessionResponseAddUserId(b, userID)
-	resp := Vibe.RestoreSessionResponseEnd(b)
+	VibeAuth.RestoreSessionResponseStart(b)
+	VibeAuth.RestoreSessionResponseAddOk(b, success)
+	VibeAuth.RestoreSessionResponseAddUserId(b, uint64(userID))
+	resp := VibeAuth.RestoreSessionResponseEnd(b)
 	b.Finish(resp)
 	return b.FinishedBytes()
 }

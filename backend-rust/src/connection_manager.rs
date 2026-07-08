@@ -7,7 +7,7 @@ use tokio::sync::RwLock;
 use tracing::info;
 
 pub type SessionId = u64;
-type SendFn = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
+pub type SendFn = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
 
 struct Session {
     send: SendFn,
